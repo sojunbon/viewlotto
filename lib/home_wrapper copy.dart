@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// ✅ เชื่อมต่อไฟล์หน้ากรอกเลข
-// หมายเหตุ: เปลี่ยน 'viewlotto' เป็นชื่อโปรเจกต์ของคุณ
-import 'number_input_screen.dart';
+// Import หน้ากรอกตัวเลขที่คุณเพิ่งสร้าง
+// import 'number_input_screen.dart';
 
 class HomeWrapper extends StatefulWidget {
   const HomeWrapper({super.key});
@@ -16,13 +15,13 @@ class HomeWrapper extends StatefulWidget {
 class _HomeWrapperState extends State<HomeWrapper> {
   int _currentIndex = 0;
 
-  // รายการหน้าจอทั้งหมด 5 หน้า
+  // รายการหน้าจอทั้งหมด 5 หน้า ตามที่คุณต้องการ
   final List<Widget> _screens = [
-    const HomeScreen(), // Index 0
-    const WalletScreen(), // Index 1
-    const BetTypeScreen(), // Index 2 (หน้าเลือกประเภทหวย)
-    const HistoryScreen(), // Index 3
-    const ProfileScreen(), // Index 4
+    const HomeScreen(), // หน้าหลัก (ผลรางวัล)
+    const WalletScreen(), // หน้าฝาก/ถอน
+    const BetTypeScreen(), // หน้าแทงหวย (เลือกประเภท)
+    const HistoryScreen(), // หน้าโพย
+    const ProfileScreen(), // หน้าโปรไฟล์
   ];
 
   @override
@@ -143,86 +142,39 @@ class WalletScreen extends StatelessWidget {
   }
 }
 
-// --- 3. หน้าเลือกประเภทหวย (ปรับปรุงการลิงก์ไปหน้ากรอกเลข) ---
+// --- 3. หน้าเลือกประเภทหวย (Bet Type) ---
 class BetTypeScreen extends StatelessWidget {
   const BetTypeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "เลือกประเภทหวย",
-          style: TextStyle(color: Colors.white),
-        ),
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF11998E), Color(0xFF38EF7D)],
-            ),
-          ),
-        ),
-      ),
+      appBar: AppBar(title: const Text("เลือกประเภทหวย")),
       body: GridView.count(
         padding: const EdgeInsets.all(16),
         crossAxisCount: 2,
-        mainAxisSpacing: 15,
-        crossAxisSpacing: 15,
         children: [
-          _buildCard(context, "หวยรัฐบาล", Icons.auto_awesome, Colors.orange),
-          _buildCard(context, "หวยลาว", Icons.star, Colors.blue),
-          _buildCard(context, "หวยฮานอย", Icons.bolt, Colors.red),
-          _buildCard(context, "หวยยี่กี", Icons.timer, Colors.purple),
+          _buildCard(context, "หวยรัฐบาล", Icons.auto_awesome),
+          _buildCard(context, "หวยลาว", Icons.star),
+          _buildCard(context, "หวยฮานอย", Icons.bolt),
+          _buildCard(context, "หวยยี่กี", Icons.timer),
         ],
       ),
     );
   }
 
-  Widget _buildCard(
-    BuildContext context,
-    String title,
-    IconData icon,
-    Color color,
-  ) {
-    return InkWell(
-      onTap: () {
-        // ✅ ลิงก์ไปยังหน้า NumberInputScreen พร้อมส่งชื่อประเภทหวย
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => NumberInputScreen(lottoTitle: title),
-          ),
-        );
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+  Widget _buildCard(BuildContext context, String title, IconData icon) {
+    return Card(
+      child: InkWell(
+        onTap: () {
+          // Navigator.push(context, MaterialPageRoute(builder: (context) => NumberInputScreen(lottoTitle: title)));
+        },
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircleAvatar(
-              backgroundColor: color.withOpacity(0.1),
-              radius: 30,
-              child: Icon(icon, size: 35, color: color),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const Text(
-              "เปิดรับแทง",
-              style: TextStyle(color: Colors.green, fontSize: 12),
-            ),
+            Icon(icon, size: 40, color: const Color(0xFF11998E)),
+            const SizedBox(height: 10),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -287,15 +239,13 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 50),
           ListTile(
-            leading: const Icon(Icons.history, color: Color(0xFF11998E)),
+            leading: const Icon(Icons.history),
             title: const Text("ประวัติการฝาก/ถอน"),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {},
           ),
           ListTile(
-            leading: const Icon(Icons.lock_outline, color: Color(0xFF11998E)),
+            leading: const Icon(Icons.lock_outline),
             title: const Text("เปลี่ยนรหัสผ่าน"),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {},
           ),
           const Spacer(),
