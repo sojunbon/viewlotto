@@ -14,14 +14,14 @@ class NumberInputScreen extends StatefulWidget {
 class _NumberInputScreenState extends State<NumberInputScreen> {
   String selectedCategory = "สามตัวบน";
   String currentNumber = "";
+  List<String> draftBets = []; // รายการเลขที่เตรียมแทง
+  bool isListExpanded = false; // สถานะเปิด/ปิด แถบซ้ายมือ
 
   final List<Map<String, String>> categories = [
     {"name": "สามตัวบน", "price": "x920"},
     {"name": "สามตัวโต๊ด", "price": "x120"},
     {"name": "สองตัวบน", "price": "x92"},
     {"name": "สองตัวล่าง", "price": "x92"},
-    {"name": "วิ่งบน", "price": "x3.2"},
-    {"name": "วิ่งล่าง", "price": "x4.2"},
   ];
 
   void _onKeyPress(String value) {
@@ -33,278 +33,301 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
       } else if (value == "สุ่ม") {
         _generateRandomNumber();
       } else {
-        int maxLength = selectedCategory.contains("สาม")
-            ? 3
-            : (selectedCategory.contains("วิ่ง") ? 1 : 2);
-        if (currentNumber.length < maxLength) {
-          currentNumber += value;
-        }
+        int maxLength = selectedCategory.contains("สาม") ? 3 : 2;
+        if (currentNumber.length < maxLength) currentNumber += value;
       }
     });
   }
 
   void _generateRandomNumber() {
-    int maxLength = selectedCategory.contains("สาม")
-        ? 3
-        : (selectedCategory.contains("วิ่ง") ? 1 : 2);
+    int maxLength = selectedCategory.contains("สาม") ? 3 : 2;
     Random random = Random();
     String result = "";
-    for (int i = 0; i < maxLength; i++) {
-      result += random.nextInt(10).toString();
-    }
+    for (int i = 0; i < maxLength; i++) result += random.nextInt(10).toString();
     setState(() => currentNumber = result);
+  }
+
+  // ✅ ฟังก์ชันกลับเลข (Permutation)
+  void _reverseNumber() {
+    if (currentNumber.length < 2) return;
+
+    List<String> results = [];
+    void permute(List<String> chars, int index) {
+      if (index == chars.length - 1) {
+        results.add(chars.join());
+        return;
+      }
+      for (int i = index; i < chars.length; i++) {
+        var temp = chars[index];
+        chars[index] = chars[i];
+        chars[i] = temp;
+        permute(chars, index + 1);
+        temp = chars[index];
+        chars[index] = chars[i];
+        chars[i] = temp;
+      }
+    }
+
+    permute(currentNumber.split(''), 0);
+    setState(() {
+      // เอาเลขที่ซ้ำออกและเพิ่มลงในรายการแทง
+      draftBets.addAll(results.toSet().toList());
+      currentNumber = ""; // ล้างช่องกรอก
+      isListExpanded = true; // เปิดแถบข้างเพื่อโชว์เลขที่กลับแล้ว
+    });
+  }
+
+  // บันทึกลง Firebase ทั้งหมดที่มีในรายการข้างๆ
+  Future<void> _submitAllBets() async {
+    if (draftBets.isEmpty && currentNumber.isEmpty) return;
+
+    List<String> finalBets = List.from(draftBets);
+    if (currentNumber.isNotEmpty) finalBets.add(currentNumber);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+
+      for (var num in finalBets) {
+        DocumentReference ref = FirebaseFirestore.instance
+            .collection('bets')
+            .doc();
+        batch.set(ref, {
+          'uid': user?.uid,
+          'lotto_type': widget.lottoTitle,
+          'category': selectedCategory,
+          'number': num,
+          'status': 'pending',
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("ส่งโพยเรียบร้อย!"),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      print(e);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
         title: Text(
           widget.lottoTitle,
           style: const TextStyle(color: Colors.white),
         ),
         backgroundColor: const Color(0xFF11998E),
-        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: Icon(isListExpanded ? Icons.list_alt : Icons.list),
+            onPressed: () => setState(() => isListExpanded = !isListExpanded),
+          ),
+        ],
       ),
-      // ✅ แก้ Overflow โดยใช้ SafeArea + SingleChildScrollView หรือ Column ที่จัด Layout ใหม่
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Column(
-                  children: [
-                    // 1. ส่วนเลือกประเภทรางวัล
-                    Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        alignment: WrapAlignment.center,
-                        children: categories.map((cat) {
-                          bool isSelected = selectedCategory == cat['name'];
-                          return InkWell(
-                            onTap: () => setState(() {
-                              selectedCategory = cat['name']!;
-                              currentNumber = "";
-                            }),
-                            child: Container(
-                              width: MediaQuery.of(context).size.width * 0.44,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? const Color(0xFF11998E)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: const Color(0xFF11998E),
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    cat['name']!,
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? Colors.white
-                                          : Colors.black87,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    cat['price']!,
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? Colors.white70
-                                          : Colors.blue,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
+      body: Row(
+        children: [
+          // 1. Sidebar ด้านซ้าย (รายการแทง) - ย่อ/ขยายได้
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: isListExpanded ? 100 : 0,
+            color: Colors.blueGrey[900],
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Text(
+                    "รายการ",
+                    style: TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: draftBets.length,
+                    itemBuilder: (context, index) {
+                      return ListTile(
+                        title: Text(
+                          draftBets[index],
+                          style: const TextStyle(
+                            color: Colors.yellow,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                        ),
+                        trailing: InkWell(
+                          onTap: () =>
+                              setState(() => draftBets.removeAt(index)),
+                          child: const Icon(
+                            Icons.cancel,
+                            color: Colors.red,
+                            size: 16,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                if (draftBets.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.delete_sweep, color: Colors.white),
+                    onPressed: () => setState(() => draftBets.clear()),
+                  ),
+              ],
+            ),
+          ),
 
-                    // 2. ช่องแสดงตัวเลข
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(
-                          selectedCategory.contains("สาม")
-                              ? 3
-                              : (selectedCategory.contains("วิ่ง") ? 1 : 2),
-                          (index) => Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 8),
-                            width: 65,
-                            height: 75,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              border: Border.all(color: Colors.grey, width: 2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Center(
-                              child: Text(
-                                currentNumber.length > index
-                                    ? currentNumber[index]
-                                    : "-",
-                                style: const TextStyle(
-                                  fontSize: 35,
-                                  fontWeight: FontWeight.bold,
+          // 2. ส่วนกรอกเลขหลัก
+          Expanded(
+            child: Column(
+              children: [
+                // หมวดหมู่
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Wrap(
+                    spacing: 5,
+                    children: categories.map((cat) {
+                      bool isSelected = selectedCategory == cat['name'];
+                      return ChoiceChip(
+                        label: Text(
+                          cat['name']!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isSelected ? Colors.white : Colors.black,
+                          ),
+                        ),
+                        selected: isSelected,
+                        selectedColor: const Color(0xFF11998E),
+                        onSelected: (val) =>
+                            setState(() => selectedCategory = cat['name']!),
+                      );
+                    }).toList(),
+                  ),
+                ),
+
+                // ช่องโชว์เลข
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.grey[300]!),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    currentNumber.isEmpty ? "---" : currentNumber,
+                    style: const TextStyle(
+                      fontSize: 40,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 10,
+                    ),
+                  ),
+                ),
+
+                // ปุ่มกลับเลข
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: OutlinedButton.icon(
+                    onPressed: currentNumber.length >= 2
+                        ? _reverseNumber
+                        : null,
+                    icon: const Icon(Icons.compare_arrows),
+                    label: const Text("กลับเลข"),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF11998E),
+                    ),
+                  ),
+                ),
+
+                const Spacer(),
+
+                // แป้นพิมพ์
+                Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(30),
+                      topRight: Radius.circular(30),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      GridView.count(
+                        shrinkWrap: true,
+                        crossAxisCount: 3,
+                        childAspectRatio: 2,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        children:
+                            [
+                              "1",
+                              "2",
+                              "3",
+                              "4",
+                              "5",
+                              "6",
+                              "7",
+                              "8",
+                              "9",
+                              "สุ่ม",
+                              "0",
+                              "⌫",
+                            ].map((key) {
+                              return ElevatedButton(
+                                onPressed: () => _onKeyPress(key),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: Colors.black,
+                                  elevation: 1,
                                 ),
-                              ),
-                            ),
+                                child: Text(
+                                  key,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                      ),
+                      const SizedBox(height: 10),
+                      ElevatedButton(
+                        onPressed: _submitAllBets,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF11998E),
+                          minimumSize: const Size(double.infinity, 50),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                        ),
+                        child: Text(
+                          draftBets.isEmpty
+                              ? "ส่งโพย"
+                              : "ส่งโพย (${draftBets.length} ชุด)",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
-
-            // 3. แป้นพิมพ์ตัวเลข (固定ด้านล่าง)
-            Container(
-              padding: const EdgeInsets.fromLTRB(15, 15, 15, 20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(30),
-                  topRight: Radius.circular(30),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min, // ✅ ป้องกันการขยายตัวเกินจำเป็น
-                children: [
-                  GridView.count(
-                    shrinkWrap: true, // ✅ สำคัญมากเมื่อใช้ใน Column
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 3,
-                    childAspectRatio:
-                        1.9, // ✅ ปรับความกว้าง-สูงของปุ่มให้เล็กลงเพื่อลดความสูงรวม
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    children:
-                        [
-                          "1",
-                          "2",
-                          "3",
-                          "4",
-                          "5",
-                          "6",
-                          "7",
-                          "8",
-                          "9",
-                          "สุ่ม",
-                          "0",
-                          "⌫",
-                        ].map((key) {
-                          return InkWell(
-                            onTap: () => _onKeyPress(key),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(30),
-                                border: Border.all(
-                                  color: const Color(0xFF38EF7D),
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: Center(
-                                child: key == "⌫"
-                                    ? const Icon(
-                                        Icons.backspace_outlined,
-                                        color: Color(0xFF11998E),
-                                      )
-                                    : Text(
-                                        key,
-                                        style: const TextStyle(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                  ),
-                  const SizedBox(height: 15),
-                  // ปุ่มส่งโพย
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _submitBet,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF11998E),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(25),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        "ใส่ราคา / ส่งโพย",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
-  }
-
-  // ฟังก์ชันบันทึกโพย (เหมือนเดิม)
-  Future<void> _submitBet() async {
-    if (currentNumber.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("กรุณากรอกเลข")));
-      return;
-    }
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      await FirebaseFirestore.instance.collection('bets').add({
-        'uid': user?.uid,
-        'email': user?.email,
-        'lotto_type': widget.lottoTitle,
-        'category': selectedCategory,
-        'number': currentNumber,
-        'status': 'pending',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("สำเร็จ!")));
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      print(e);
-    }
   }
 }
