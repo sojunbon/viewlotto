@@ -88,7 +88,7 @@ class AuthGate extends StatelessWidget {
           return const Scaffold(
             body: Center(
               //child: CircularProgressIndicator(color: Color(0xFF11998E)),
-              child: Text("ถ้าเห็นข้อความนี้ แสดงว่า Firebase รอดแล้ว!"),
+              child: Text("Firebase connect."),
             ),
           );
         }
