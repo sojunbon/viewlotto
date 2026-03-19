@@ -1,26 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
-// Import ไฟล์หน้าจอของคุณ (ตรวจสอบชื่อไฟล์ให้ตรงกับที่คุณสร้าง)
+// Import หน้าจอของคุณ
 import 'login_page.dart';
 import 'home_wrapper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // การตั้งค่า Firebase สำหรับโปรเจกต์ viewlotto
-  await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: "AIzaSyC98JVx_eZbnQYOyuzQmI_rDjhP7RCpvoA",
-      authDomain: "viewlotto-3736a.firebaseapp.com",
-      projectId: "viewlotto-3736a",
-      storageBucket: "viewlotto-3736a.firebasestorage.app",
-      messagingSenderId: "987472618400",
-      appId: "1:987472618400:web:ca930cde524b2478673ac5",
-      measurementId: "G-RE45H60QEF",
-    ),
-  );
+  try {
+    if (kIsWeb) {
+      // ✅ สำหรับ WEB: ต้องระบุค่า Options เสมอ
+      await Firebase.initializeApp(
+        options: const FirebaseOptions(
+          apiKey: "AIzaSyC98JVx_eZbnQYOyuzQmI_rDjhP7RCpvoA",
+          authDomain: "viewlotto-3736a.firebaseapp.com",
+          projectId: "viewlotto-3736a",
+          storageBucket: "viewlotto-3736a.firebasestorage.app",
+          messagingSenderId: "987472618400",
+          appId: "1:987472618400:web:ca930cde524b2478673ac5",
+          measurementId: "G-RE45H60QEF",
+        ),
+      );
+    } else {
+      // ✅ สำหรับ ANDROID: พยายามโหลดจาก google-services.json ก่อน
+      // หากตั้งค่า Gradle ถูกต้องตามที่คุณส่งมา ตัวนี้จะทำงานได้ทันที
+      try {
+        await Firebase.initializeApp();
+      } catch (e) {
+        // ⚠️ กรณีระบบ Auto-detect มีปัญหา ให้ใช้ค่า Manual ของ Android แทน
+        await Firebase.initializeApp(
+          options: const FirebaseOptions(
+            apiKey:
+                "AIzaSyDsGoK7L3CoSei0Jqs1oz0TczuqGnOjsQY", // API Key Android
+            appId:
+                "1:987472618400:android:5c06deff209dc626673ac5", // App ID Android
+            messagingSenderId: "987472618400",
+            projectId: "viewlotto-3736a",
+            storageBucket: "viewlotto-3736a.firebasestorage.app",
+          ),
+        );
+      }
+    }
+  } catch (e) {
+    debugPrint("Firebase Initialization Error: $e");
+  }
 
   runApp(const MyApp());
 }
@@ -34,7 +60,6 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'View Lotto',
       theme: ThemeData(
-        // ตั้งค่า Theme สีเขียว Green Liquid ตามที่คุณต้องการ
         primaryColor: const Color(0xFF11998E),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF11998E),
@@ -42,14 +67,14 @@ class MyApp extends StatelessWidget {
           secondary: const Color(0xFF38EF7D),
         ),
         useMaterial3: true,
-        fontFamily: 'Kanit', // หากมีฟอนต์ภาษาไทย
+        fontFamily: 'Kanit', // อย่าลืมใส่ font ใน pubspec.yaml
       ),
-      // ส่วนที่ใช้เช็คว่า Login ค้างไว้หรือไม่
       home: const AuthGate(),
     );
   }
 }
 
+// --- ส่วนที่ใช้ตรวจสอบว่า User ล็อกอินค้างไว้หรือไม่ ---
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -58,21 +83,22 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // หากกำลังตรวจสอบสถานะ ให้ขึ้น Loading
+        // 1. ระหว่างรอผลการเชื่อมต่อจาก Firebase
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(
-              child: CircularProgressIndicator(color: Color(0xFF11998E)),
+              //child: CircularProgressIndicator(color: Color(0xFF11998E)),
+              child: Text("ถ้าเห็นข้อความนี้ แสดงว่า Firebase รอดแล้ว!"),
             ),
           );
         }
 
-        // หากมีข้อมูล User (Login แล้ว) ไปหน้า Home
+        // 2. ถ้ามีการ Login อยู่แล้ว ให้ไปหน้า Home
         if (snapshot.hasData) {
           return const HomeWrapper();
         }
 
-        // หากไม่มีข้อมูล User ไปหน้า Login
+        // 3. ถ้ายังไม่ได้ Login หรือ Logout ออกไปแล้ว ให้ไปหน้า Login
         return const LoginPage();
       },
     );

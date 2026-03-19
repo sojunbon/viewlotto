@@ -1,4 +1,4 @@
-package com.example.viewlotto
+package com.company.viewlotto
 
 import io.flutter.embedding.android.FlutterActivity
 

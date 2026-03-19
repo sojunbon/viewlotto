@@ -18,8 +18,9 @@ class _RegisterPageState extends State<RegisterPage> {
 
   // ฟังก์ชันสมัครสมาชิก
   Future<void> _register() async {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty)
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       return;
+    }
 
     setState(() => _isLoading = true);
 
