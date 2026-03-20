@@ -52,7 +52,7 @@ class AdminDashboard extends StatelessWidget {
                   "ตั้งค่าหวย",
                   Icons.settings_suggest,
                   Colors.orange,
-                  null,
+                  '/lotto_config', // ✅ ใส่ชื่อ Route ที่เราเพิ่มใน main.dart
                 ),
                 _adminMenu(
                   context,

@@ -9,6 +9,7 @@ import 'login_page.dart';
 import 'home_wrapper.dart';
 import 'admin_dashboard.dart';
 import 'admin_user_management.dart';
+import 'admin_lotto_config.dart';
 
 void main() async {
   // 1. ตรวจสอบให้แน่ใจว่า Flutter Binding พร้อมใช้งานก่อนเริ่ม Firebase
@@ -77,6 +78,7 @@ class MyApp extends StatelessWidget {
         '/home': (context) => const HomeWrapper(),
         '/admin': (context) => const AdminDashboard(),
         '/user_management': (context) => const AdminUserManagement(),
+        '/lotto_config': (context) => const AdminLottoConfig(),
       },
       home: const AuthGate(),
     );
