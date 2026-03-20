@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'dart:math';
-import 'price_input_screen.dart';
+import 'price_input_screen.dart'; // อย่าลืม import หน้าใส่ราคาที่คุณสร้างไว้
 
 // ✅ Theme Green Liquid & Deep Blue Sidebar
 const Color kMainGreen = Color(0xFF11998E);
@@ -10,7 +10,7 @@ const Color kDeepBlue = Color(0xFF1A3D5D);
 
 class NumberInputScreen extends StatefulWidget {
   final String lottoTitle;
-  final String lottoKey; // เช่น 'thai', 'lao', 'hanoy'
+  final String lottoKey;
 
   const NumberInputScreen({
     super.key,
@@ -27,7 +27,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
   String currentNumber = "";
   List<Map<String, String>> draftBets = [];
   bool canPlay4Digits = false;
-  bool isReverseMode = false;
+  bool isReverseMode = false; // Step 2: สถานะโหมดกลับเลข
 
   @override
   void initState() {
@@ -35,7 +35,6 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     _check4DigitConfig();
   }
 
-  // ดึงสิทธิ์การแทง 4 ตัวจากอาเรย์ใน configs/setnum4
   Future<void> _check4DigitConfig() async {
     try {
       DocumentSnapshot snap = await FirebaseFirestore.instance
@@ -51,6 +50,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     }
   }
 
+  // ✅ ฟังชันจัดกลุ่มข้อมูลสำหรับ Sidebar
   Map<String, List<Map<String, dynamic>>> _getGroupedBets() {
     Map<String, List<Map<String, dynamic>>> groups = {};
     for (int i = 0; i < draftBets.length; i++) {
@@ -64,15 +64,16 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
   void _onKeyPress(String value) {
     setState(() {
       if (value == "del") {
-        if (currentNumber.isNotEmpty) {
+        if (currentNumber.isNotEmpty)
           currentNumber = currentNumber.substring(0, currentNumber.length - 1);
-        }
       } else if (value == "สุ่ม") {
         _generateRandom();
       } else {
         int max = _getMaxLength();
         if (currentNumber.length < max) {
           currentNumber += value;
+
+          // Step 4: เมื่อพิมพ์ครบหลัก
           if (currentNumber.length == max) {
             if (isReverseMode && currentNumber.length >= 2) {
               _processReverseAndAdd();
@@ -82,7 +83,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
                 "cat": selectedCategory,
               });
             }
-            currentNumber = "";
+            currentNumber = ""; // ล้างช่องกรอกทันที
           }
         }
       }
@@ -125,11 +126,10 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     }
     setState(() {
       currentNumber = res;
-      if (isReverseMode) {
+      if (isReverseMode)
         _processReverseAndAdd();
-      } else {
+      else
         draftBets.insert(0, {"num": currentNumber, "cat": selectedCategory});
-      }
       currentNumber = "";
     });
   }
@@ -154,16 +154,16 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
       ),
       body: Column(
         children: [
-          _buildCategoryGridStream(), // ✅ เปลี่ยนมาใช้แบบ Stream ดึงราคาจากระบบ
-          _buildTopActions(),
+          _buildCategoryGrid(), // Step 1
+          _buildTopActions(), // Step 2
           Expanded(
             child: Row(
               children: [
-                _buildSidebar(),
+                _buildSidebar(), // Sidebar จัดกลุ่ม + ปุ่มลบทั้งหมด
                 Expanded(
                   child: Column(
                     children: [
-                      _buildNumberDisplay(),
+                      _buildNumberDisplay(), // Step 3
                       Expanded(child: _buildKeypad()),
                     ],
                   ),
@@ -171,100 +171,68 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
               ],
             ),
           ),
-          _buildSubmitButton(),
+          _buildSubmitButton(), // ปุ่มไปหน้าใส่ราคา
         ],
       ),
     );
   }
 
-  // ✅ ฟังชันใหม่: ดึงราคาจาก Firestore (configs/lottogen/lottogrid/...)
-  Widget _buildCategoryGridStream() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('configs')
-          .doc('lottogen')
-          .collection('lottogrid')
-          .where('lottotype', isEqualTo: widget.lottoKey)
-          .limit(1)
-          .snapshots(),
-      builder: (context, snapshot) {
-        // ค่าเริ่มต้นกรณีรอโหลดหรือหาไม่เจอ
-        Map<String, dynamic> data = {
-          'digit4': '8000',
-          'digit3': '920',
-          'swift': '120',
-          'digit2': '92',
-          'digit1': '3.2',
-        };
-
-        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-          data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-        }
-
-        List<Map<String, String>> categories = [
-          if (canPlay4Digits)
-            {"name": "สี่ตัวบน", "pay": "x${data['digit4'] ?? 8000}"},
-          {"name": "สามตัวบน", "pay": "x${data['digit3'] ?? 920}"},
-          {"name": "สามตัวโต๊ด", "pay": "x${data['swift'] ?? 120}"},
-          {"name": "สองตัวบน", "pay": "x${data['digit2'] ?? 92}"},
-          {"name": "สองตัวล่าง", "pay": "x${data['digit2'] ?? 92}"},
-          {"name": "วิ่งบน", "pay": "x${data['digit1'] ?? 3.2}"},
-          {"name": "วิ่งล่าง", "pay": "x${data['digit1'] ?? 4.2}"},
-        ];
-
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            children: categories.map((cat) {
-              bool isSelected = selectedCategory == cat['name'];
-              return InkWell(
-                onTap: () => setState(() {
-                  selectedCategory = cat['name']!;
-                  currentNumber = "";
-                }),
-                child: Container(
-                  width: (MediaQuery.of(context).size.width / 2) - 8,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 4,
-                    horizontal: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isSelected ? kMainGreen : Colors.black12,
-                    ),
-                    color: isSelected
-                        ? kMainGreen.withOpacity(0.08)
-                        : Colors.white,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        cat['name']!,
-                        style: TextStyle(
-                          color: isSelected ? kMainGreen : Colors.black87,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        cat['pay']!,
-                        style: TextStyle(
-                          color: isSelected ? kMainGreen : Colors.black45,
-                          fontSize: 9,
-                        ),
-                      ),
-                    ],
-                  ),
+  Widget _buildCategoryGrid() {
+    List<Map<String, String>> categories = [
+      if (canPlay4Digits) {"name": "สี่ตัวบน", "pay": "x8000"},
+      {"name": "สามตัวบน", "pay": "x920"},
+      {"name": "สามตัวโต๊ด", "pay": "x120"},
+      {"name": "สองตัวบน", "pay": "x92"},
+      {"name": "สองตัวล่าง", "pay": "x92"},
+      {"name": "วิ่งบน", "pay": "x3.2"},
+      {"name": "วิ่งล่าง", "pay": "x4.2"},
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: categories.map((cat) {
+          bool isSelected = selectedCategory == cat['name'];
+          return InkWell(
+            onTap: () => setState(() {
+              selectedCategory = cat['name']!;
+              currentNumber = "";
+            }),
+            child: Container(
+              width: (MediaQuery.of(context).size.width / 2) - 8,
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isSelected ? kMainGreen : Colors.black12,
                 ),
-              );
-            }).toList(),
-          ),
-        );
-      },
+                color: isSelected ? kMainGreen.withOpacity(0.08) : Colors.white,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    cat['name']!,
+                    style: TextStyle(
+                      color: isSelected ? kMainGreen : Colors.black87,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    cat['pay']!,
+                    style: TextStyle(
+                      color: isSelected ? kMainGreen : Colors.black45,
+                      fontSize: 9,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 
