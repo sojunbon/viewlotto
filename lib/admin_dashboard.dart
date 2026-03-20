@@ -63,6 +63,13 @@ class AdminDashboard extends StatelessWidget {
                 ),
                 _adminMenu(
                   context,
+                  "ตรวจผลหวย",
+                  Icons.access_alarm,
+                  Colors.teal,
+                  '/adminresult', // เปลี่ยนเป็นหน้าแสดงผลหวยภายหลัง
+                ),
+                _adminMenu(
+                  context,
                   "ดูโพยทั้งหมด",
                   Icons.receipt_long,
                   Colors.purple,

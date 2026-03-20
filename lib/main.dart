@@ -13,7 +13,7 @@ import 'admin_lotto_config.dart';
 import 'admin_4digit_config.dart';
 import 'deposit_screen.dart';
 import 'wallet_screen.dart';
-import 'profile_screen.dart';
+import 'admin_set_result_screen.dart';
 
 void main() async {
   // 1. ตรวจสอบให้แน่ใจว่า Flutter Binding พร้อมใช้งานก่อนเริ่ม Firebase
@@ -86,7 +86,8 @@ class MyApp extends StatelessWidget {
         '/admin_4digit_config': (context) => const Admin4DigitConfig(),
         '/wallet': (context) => const WalletScreen(),
         '/deposit': (context) => const DepositScreen(),
-        // '/profile': (context) => const ProfileScreen(),
+        '/adminresult': (context) =>
+            const AdminSetResultScreen(), // ✅ เพิ่ม Route สำหรับตั้งค่าผลหวย เช็คผลหวย Admin
       },
       home: const AuthGate(),
     );
