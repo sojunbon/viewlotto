@@ -26,9 +26,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
   String currentNumber = "";
   List<Map<String, String>> draftBets = [];
   bool canPlay4Digits = false;
-
-  // ✅ 2. ตัวแปรสำหรับสถานะปุ่มกลับเลข (Toggle)
-  bool isReverseMode = false;
+  bool isReverseMode = false; // โหมดกลับเลข (Step 2)
 
   @override
   void initState() {
@@ -51,7 +49,17 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     }
   }
 
-  // ✅ 4. ฟังก์ชันจัดการการพิมพ์เลขและส่งไปรายการด้านซ้าย
+  // ✅ จัดกลุ่มรายการแทงสำหรับแสดงผลใน Sidebar
+  Map<String, List<Map<String, dynamic>>> _getGroupedBets() {
+    Map<String, List<Map<String, dynamic>>> groups = {};
+    for (int i = 0; i < draftBets.length; i++) {
+      String cat = draftBets[i]['cat']!;
+      if (!groups.containsKey(cat)) groups[cat] = [];
+      groups[cat]!.add({'index': i, 'num': draftBets[i]['num']});
+    }
+    return groups;
+  }
+
   void _onKeyPress(String value) {
     setState(() {
       if (value == "del") {
@@ -63,26 +71,23 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
         int max = _getMaxLength();
         if (currentNumber.length < max) {
           currentNumber += value;
-
-          // เมื่อกรอกครบหลักตาม Step 4
+          // Step 4: เมื่อกรอกครบหลัก ส่งไปรายการด้านซ้าย
           if (currentNumber.length == max) {
             if (isReverseMode && currentNumber.length >= 2) {
               _processReverseAndAdd();
             } else {
-              _addSingleBet(currentNumber);
+              draftBets.insert(0, {
+                "num": currentNumber,
+                "cat": selectedCategory,
+              });
             }
-            currentNumber = ""; // ล้างช่องกรอกเพื่อรอเลขถัดไป
+            currentNumber = ""; // ล้างช่องกรอก
           }
         }
       }
     });
   }
 
-  void _addSingleBet(String num) {
-    draftBets.insert(0, {"num": num, "cat": selectedCategory});
-  }
-
-  // ฟังก์ชันคำนวณการกลับเลข
   void _processReverseAndAdd() {
     Set<String> results = {};
     void permute(List<String> chars, int index) {
@@ -103,7 +108,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
 
     permute(currentNumber.split(''), 0);
     for (var n in results) {
-      _addSingleBet(n);
+      draftBets.insert(0, {"num": n, "cat": selectedCategory});
     }
   }
 
@@ -122,20 +127,9 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
       if (isReverseMode)
         _processReverseAndAdd();
       else
-        _addSingleBet(currentNumber);
+        draftBets.insert(0, {"num": currentNumber, "cat": selectedCategory});
       currentNumber = "";
     });
-  }
-
-  // ✅ จัดกลุ่มข้อมูลสำหรับ Sidebar
-  Map<String, List<Map<String, dynamic>>> _getGroupedBets() {
-    Map<String, List<Map<String, dynamic>>> groups = {};
-    for (int i = 0; i < draftBets.length; i++) {
-      String cat = draftBets[i]['cat']!;
-      if (!groups.containsKey(cat)) groups[cat] = [];
-      groups[cat]!.add({'index': i, 'num': draftBets[i]['num']});
-    }
-    return groups;
   }
 
   @override
@@ -163,7 +157,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
           Expanded(
             child: Row(
               children: [
-                _buildSidebar(), // รายการที่จัดกลุ่มแล้ว
+                _buildSidebar(), // Sidebar ฝั่งซ้ายพร้อมปุ่มลบทั้งหมด
                 Expanded(
                   child: Column(
                     children: [
@@ -191,7 +185,6 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
       {"name": "วิ่งบน", "pay": "x3.2"},
       {"name": "วิ่งล่าง", "pay": "x4.2"},
     ];
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       child: Wrap(
@@ -246,7 +239,6 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       child: Row(
         children: [
-          // ✅ Step 2: ปุ่มกลับเลขแบบ Toggle
           Expanded(
             child: InkWell(
               onTap: () => setState(() => isReverseMode = !isReverseMode),
@@ -255,18 +247,11 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
                 decoration: BoxDecoration(
                   color: isReverseMode ? kMainGreen : Colors.black,
                   borderRadius: BorderRadius.circular(4),
-                  border: isReverseMode
-                      ? Border.all(color: kLightGreen, width: 1.5)
-                      : null,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.sync,
-                      color: isReverseMode ? Colors.white : Colors.white,
-                      size: 14,
-                    ),
+                    const Icon(Icons.sync, color: Colors.white, size: 14),
                     const SizedBox(width: 4),
                     Text(
                       isReverseMode ? "โหมดกลับเลข: เปิด" : "กลับเลข",
@@ -336,6 +321,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
               ),
             ),
           ),
+          // ส่วนรายการ (Scrollable)
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
@@ -403,6 +389,31 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
               }).toList(),
             ),
           ),
+          // ✅ ปุ่มลบทั้งหมด (อยู่ด้านล่างสุดของ Sidebar)
+          if (draftBets.isNotEmpty)
+            InkWell(
+              onTap: () => setState(() => draftBets.clear()),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                color: Colors.redAccent.withOpacity(0.8),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.delete_sweep, color: Colors.white, size: 14),
+                    SizedBox(width: 4),
+                    Text(
+                      "ลบทั้งหมด",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
