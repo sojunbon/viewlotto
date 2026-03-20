@@ -56,6 +56,13 @@ class AdminDashboard extends StatelessWidget {
                 ),
                 _adminMenu(
                   context,
+                  "สิทธิ์หวย 4 หลัก",
+                  Icons.looks_4,
+                  Colors.redAccent,
+                  '/admin_4digit_config', // อย่าลืมไปเพิ่ม Route ใน main.dart
+                ),
+                _adminMenu(
+                  context,
                   "ดูโพยทั้งหมด",
                   Icons.receipt_long,
                   Colors.purple,
