@@ -32,7 +32,7 @@ class _RegisterPageState extends State<RegisterPage> {
             password: _passwordController.text.trim(),
           );
 
-      // 2. บันทึกข้อมูลเพิ่มลงใน Firestore
+      // 2. บันทึกข้อมูลเพิ่มลงใน Firestore (เพิ่มฟิลด์ role และข้อมูลพื้นฐาน)
       if (userCredential.user != null) {
         await FirebaseFirestore.instance
             .collection('users')
@@ -41,6 +41,9 @@ class _RegisterPageState extends State<RegisterPage> {
               'uid': userCredential.user!.uid,
               'name': _nameController.text.trim(),
               'email': _emailController.text.trim(),
+              'role': 'user', // ✅ เพิ่มฟิลด์นี้เพื่อให้ระบบ Admin ค้นหาเจอ
+              'credit': 0, // ✅ เพิ่มยอดเงินเริ่มต้น (ถ้ามี)
+              'status': 'active', // ✅ สถานะบัญชี
               'is_premium': false,
               'created_at': FieldValue.serverTimestamp(),
             });
@@ -71,6 +74,8 @@ class _RegisterPageState extends State<RegisterPage> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } catch (e) {
+      debugPrint("Register Error: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -79,7 +84,7 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // พื้นหลังไล่เฉดสีเขียว
+      // พื้นหลังไล่เฉดสีเขียวสไตล์ Liquid ของ ViewLotto
       body: Container(
         width: double.infinity,
         decoration: const BoxDecoration(
