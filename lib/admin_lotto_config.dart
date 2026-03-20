@@ -20,17 +20,13 @@ class AdminLottoConfig extends StatelessWidget {
             .collection('configs')
             .doc('lottogen')
             .collection('lottogrid')
-            .orderBy('number')
+            .orderBy('number') // ✅ เรียงตามลำดับเลขที่ตั้งไว้
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting)
             return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
-              child: Text("ยังไม่มีรายการหวย กดปุ่ม + เพื่อเพิ่ม"),
-            );
-          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+            return const Center(child: Text("ยังไม่มีรายการหวย"));
 
           final docs = snapshot.data!.docs;
 
@@ -40,6 +36,7 @@ class AdminLottoConfig extends StatelessWidget {
             itemBuilder: (context, index) {
               final data = docs[index].data() as Map<String, dynamic>;
               final docId = docs[index].id;
+              final int lottoNumber = data['number'] ?? 0; // ✅ แสดงเลขลำดับ
 
               return Card(
                 elevation: 3,
@@ -48,34 +45,19 @@ class AdminLottoConfig extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: ListTile(
-                  leading: data['lottolink'] != null && data['lottolink'] != ""
-                      ? Image.network(
-                          data['lottolink'],
-                          width: 40,
-                          height: 40,
-                          fit: BoxFit.cover,
-                          errorBuilder: (c, e, s) => const Icon(
-                            Icons.broken_image,
-                            color: Colors.grey,
-                          ),
-                        )
-                      : Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.sports_esports,
-                            color: Colors.grey,
-                          ), // ✅ แก้ไขตรงนี้
-                        ),
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFF1A3D5D),
+                    child: Text(
+                      lottoNumber.toString(),
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                  ),
                   title: Text(
                     data['lottoname'] ?? 'ไม่ระบุชื่อ',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text(
-                    "3ตัว: x${data['digit3']} | 2ตัว: x${data['digit2']} | โต๊ด(swift): x${data['swift']}",
+                    "ID: ${data['lottotype'] ?? '-'} | 3ตัว: x${data['digit3']}",
                   ),
                   trailing: const Icon(Icons.edit, color: Colors.blue),
                   onTap: () =>
@@ -99,8 +81,30 @@ class AdminLottoConfig extends StatelessWidget {
     String docId,
     Map<String, dynamic> data, {
     required bool isNew,
-  }) {
-    // ข้อมูลทั่วไป
+  }) async {
+    // --- Logic Auto Run Number ---
+    int nextNumber = 1;
+    if (isNew) {
+      // ดึงข้อมูลตัวสุดท้ายเพื่อหาเลขลำดับล่าสุด
+      var lastDoc = await FirebaseFirestore.instance
+          .collection('configs')
+          .doc('lottogen')
+          .collection('lottogrid')
+          .orderBy('number', descending: true)
+          .limit(1)
+          .get();
+
+      if (lastDoc.docs.isNotEmpty) {
+        nextNumber = (lastDoc.docs.first.get('number') ?? 0) + 1;
+      }
+    } else {
+      nextNumber = data['number'] ?? 0;
+    }
+
+    // เตรียม Controller
+    TextEditingController numController = TextEditingController(
+      text: nextNumber.toString(),
+    );
     TextEditingController nameController = TextEditingController(
       text: data['lottoname'] ?? "",
     );
@@ -110,8 +114,6 @@ class AdminLottoConfig extends StatelessWidget {
     TextEditingController linkController = TextEditingController(
       text: data['lottolink'] ?? "",
     );
-
-    // ข้อมูลราคาจ่าย (แปลงเป็น String เพื่อใส่ใน TextField)
     TextEditingController d4 = TextEditingController(
       text: (data['digit4'] ?? "8000").toString(),
     );
@@ -128,37 +130,43 @@ class AdminLottoConfig extends StatelessWidget {
       text: (data['swift'] ?? "150").toString(),
     );
 
+    if (!context.mounted) return;
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text(isNew ? "เพิ่มหวยใหม่" : "แก้ไข: ${data['lottoname']}"),
+        title: Text(isNew ? "เพิ่มหวยใหม่" : "แก้ไขข้อมูล"),
         content: SizedBox(
           width: double.maxFinite,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildHeader("ข้อมูลพื้นฐาน"),
-                _buildTextField(
-                  "ชื่อหวย",
-                  nameController,
-                  hint: "เช่น ฮานอยปกติ",
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildTextField(
+                        "ลำดับ (Auto)",
+                        numController,
+                        isNum: true,
+                      ),
+                    ), // ✅ ฟิลด์ number
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: _buildTextField("ชื่อหวย", nameController),
+                    ),
+                  ],
                 ),
                 _buildTextField(
                   "ประเภท (lottotype)",
                   typeController,
-                  hint: "เช่น thai, lao, hanoy",
+                  hint: "เช่น thai, lao",
                 ),
-                _buildTextField(
-                  "ลิงก์รูปภาพ (lottolink)",
-                  linkController,
-                  hint: "https://...",
-                ),
-
-                const SizedBox(height: 10),
-                _buildHeader("ราคาจ่ายต่อ 1 บาท"),
+                _buildTextField("ลิงก์รูปภาพ", linkController),
+                const Divider(),
                 Row(
                   children: [
                     Expanded(child: _buildPriceField("4 ตัวบน", d4)),
@@ -172,7 +180,7 @@ class AdminLottoConfig extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: _buildPriceField("โต๊ด (swift)", swiftController),
-                    ), // ✅ เพิ่ม Swift
+                    ),
                   ],
                 ),
                 _buildPriceField("วิ่งบน", d1),
@@ -192,12 +200,10 @@ class AdminLottoConfig extends StatelessWidget {
             onPressed: () async {
               if (nameController.text.isEmpty) return;
 
-              final collection = FirebaseFirestore.instance
-                  .collection('configs')
-                  .doc('lottogen')
-                  .collection('lottogrid');
-
-              Map<String, dynamic> updateData = {
+              Map<String, dynamic> finalData = {
+                'number':
+                    int.tryParse(numController.text) ??
+                    nextNumber, // ✅ บันทึก number
                 'lottoname': nameController.text,
                 'lottotype': typeController.text,
                 'lottolink': linkController.text,
@@ -205,50 +211,25 @@ class AdminLottoConfig extends StatelessWidget {
                 'digit3': int.tryParse(d3.text) ?? 0,
                 'digit2': int.tryParse(d2.text) ?? 0,
                 'digit1': double.tryParse(d1.text) ?? 0.0,
-                'swift':
-                    int.tryParse(swiftController.text) ?? 0, // ✅ บันทึก Swift
+                'swift': int.tryParse(swiftController.text) ?? 0,
+                'lottostatus': data['lottostatus'] ?? true,
               };
 
-              if (isNew) {
-                // หาเลขลำดับถัดไป
-                var lastDoc = await collection
-                    .orderBy('number', descending: true)
-                    .limit(1)
-                    .get();
-                int nextNumber = lastDoc.docs.isNotEmpty
-                    ? (lastDoc.docs.first.get('number') ?? 0) + 1
-                    : 1;
-                updateData['number'] = nextNumber;
-                updateData['lottostatus'] = true;
+              final collection = FirebaseFirestore.instance
+                  .collection('configs')
+                  .doc('lottogen')
+                  .collection('lottogrid');
 
-                await collection.add(updateData);
+              if (isNew) {
+                await collection.add(finalData);
               } else {
-                await collection.doc(docId).update(updateData);
+                await collection.doc(docId).update(finalData);
               }
               Navigator.pop(ctx);
             },
-            child: const Text(
-              "บันทึกข้อมูล",
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text("บันทึก", style: TextStyle(color: Colors.white)),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.grey,
-          ),
-        ),
       ),
     );
   }
@@ -257,11 +238,13 @@ class AdminLottoConfig extends StatelessWidget {
     String label,
     TextEditingController controller, {
     String? hint,
+    bool isNum = false,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextField(
         controller: controller,
+        keyboardType: isNum ? TextInputType.number : TextInputType.text,
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
