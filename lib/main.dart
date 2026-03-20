@@ -11,6 +11,9 @@ import 'admin_dashboard.dart';
 import 'admin_user_management.dart';
 import 'admin_lotto_config.dart';
 import 'admin_4digit_config.dart';
+import 'deposit_screen.dart';
+import 'wallet_screen.dart';
+import 'profile_screen.dart';
 
 void main() async {
   // 1. ตรวจสอบให้แน่ใจว่า Flutter Binding พร้อมใช้งานก่อนเริ่ม Firebase
@@ -81,6 +84,9 @@ class MyApp extends StatelessWidget {
         '/user_management': (context) => const AdminUserManagement(),
         '/lotto_config': (context) => const AdminLottoConfig(),
         '/admin_4digit_config': (context) => const Admin4DigitConfig(),
+        '/wallet': (context) => const WalletScreen(),
+        '/deposit': (context) => const DepositScreen(),
+        // '/profile': (context) => const ProfileScreen(),
       },
       home: const AuthGate(),
     );
