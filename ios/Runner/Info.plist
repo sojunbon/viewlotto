@@ -4,6 +4,12 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ขอเข้าถึงคลังรูปภาพเพื่ออัปโหลดรูปธงหวย</string>
+	<key>NSCameraUsageDescription</key>
+	<string>ขอเข้าถึงกล้องเพื่อถ่ายรูปธงหวย</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ขอเข้าถึงไมโครโฟน</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

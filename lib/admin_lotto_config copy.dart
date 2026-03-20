@@ -13,61 +13,47 @@ class AdminLottoConfig extends StatefulWidget {
 
 class _AdminLottoConfigState extends State<AdminLottoConfig> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
-  final ImagePicker _picker = ImagePicker();
 
-  // --- ฟังก์ชันอัปโหลดรูปภาพ (ปรับปรุงป้องกันแอปหลุด) ---
+  // --- ฟังก์ชันอัปโหลดรูปภาพ ---
   Future<void> _uploadImage(TextEditingController controller) async {
-    try {
-      // 1. เลือกรูปภาพ
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 50, // ลดขนาดไฟล์เพื่อป้องกัน Out of Memory
-      );
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 50,
+    );
 
-      if (image == null) return; // ยูสเซอร์กดยกเลิก
-
-      // 2. แสดง Loading Dialog
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => const Center(
-          child: CircularProgressIndicator(color: Color(0xFF11998E)),
-        ),
-      );
-
-      // 3. เตรียมการอัปโหลด
-      File file = File(image.path);
-      String fileName =
-          'lotto_flags/${DateTime.now().millisecondsSinceEpoch}.png';
-      Reference storageRef = _storage.ref().child(fileName);
-
-      // 4. เริ่มอัปโหลด
-      UploadTask uploadTask = storageRef.putFile(file);
-      TaskSnapshot snapshot = await uploadTask;
-
-      // 5. รับลิงก์ URL
-      String downloadUrl = await snapshot.ref.getDownloadURL();
-
-      if (mounted) {
-        // ปิด Loading Dialog (ใช้ rootNavigator เพื่อความชัวร์)
-        Navigator.of(context, rootNavigator: true).pop();
-        setState(() {
-          controller.text = downloadUrl;
-        });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("อัปโหลดรูปธงสำเร็จ")));
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("เกิดข้อผิดพลาด: ${e.toString()}")),
+    if (image != null) {
+      try {
+        // แสดง Loading
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => const Center(
+            child: CircularProgressIndicator(color: Color(0xFF11998E)),
+          ),
         );
+
+        String fileName =
+            'lotto_flags/${DateTime.now().millisecondsSinceEpoch}.png';
+        Reference storageRef = FirebaseStorage.instance.ref().child(fileName);
+
+        UploadTask uploadTask = storageRef.putFile(File(image.path));
+        TaskSnapshot snapshot = await uploadTask;
+        String downloadUrl = await snapshot.ref.getDownloadURL();
+
+        if (mounted) {
+          Navigator.pop(context); // ปิด Loading
+          setState(() {
+            controller.text = downloadUrl; // ใส่ลิงก์ลงใน Controller ทันที
+          });
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text("อัปโหลดรูปภาพสำเร็จ")));
+        }
+      } catch (e) {
+        if (mounted) Navigator.pop(context);
+        debugPrint("Upload Error: $e");
       }
-      debugPrint("Upload Error: $e");
     }
   }
 
@@ -114,17 +100,10 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                 child: ListTile(
                   leading: CircleAvatar(
                     backgroundColor: const Color(0xFF1A3D5D),
-                    backgroundImage:
-                        (data['lottolink'] != null && data['lottolink'] != "")
-                        ? NetworkImage(data['lottolink'])
-                        : null,
-                    child:
-                        (data['lottolink'] == null || data['lottolink'] == "")
-                        ? Text(
-                            lottoNumber.toString(),
-                            style: const TextStyle(color: Colors.white),
-                          )
-                        : null,
+                    child: Text(
+                      lottoNumber.toString(),
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                    ),
                   ),
                   title: Text(
                     data['lottoname'] ?? 'ไม่ระบุชื่อ',
@@ -149,6 +128,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
     );
   }
 
+  // --- Dialog สำหรับเพิ่มและแก้ไข ---
   void _showEditDialog(
     String docId,
     Map<String, dynamic> data, {
@@ -234,7 +214,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                   hint: "เช่น thai, lao, hanoy",
                 ),
 
-                // ฟิลด์ Link พร้อมปุ่ม Upload
+                // ✅ ฟิลด์ Link พร้อมปุ่ม Upload
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: TextField(
