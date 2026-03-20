@@ -1,8 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'price_input_screen.dart'; // อย่าลืม import หน้าใส่ราคาที่คุณสร้างไว้
 
-// ✅ Theme Green Liquid
+// ✅ Theme Green Liquid & Deep Blue Sidebar
 const Color kMainGreen = Color(0xFF11998E);
 const Color kLightGreen = Color(0xFF38EF7D);
 const Color kDeepBlue = Color(0xFF1A3D5D);
@@ -26,7 +27,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
   String currentNumber = "";
   List<Map<String, String>> draftBets = [];
   bool canPlay4Digits = false;
-  bool isReverseMode = false; // โหมดกลับเลข (Step 2)
+  bool isReverseMode = false; // Step 2: สถานะโหมดกลับเลข
 
   @override
   void initState() {
@@ -49,7 +50,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     }
   }
 
-  // ✅ จัดกลุ่มรายการแทงสำหรับแสดงผลใน Sidebar
+  // ✅ ฟังชันจัดกลุ่มข้อมูลสำหรับ Sidebar
   Map<String, List<Map<String, dynamic>>> _getGroupedBets() {
     Map<String, List<Map<String, dynamic>>> groups = {};
     for (int i = 0; i < draftBets.length; i++) {
@@ -71,7 +72,8 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
         int max = _getMaxLength();
         if (currentNumber.length < max) {
           currentNumber += value;
-          // Step 4: เมื่อกรอกครบหลัก ส่งไปรายการด้านซ้าย
+
+          // Step 4: เมื่อพิมพ์ครบหลัก
           if (currentNumber.length == max) {
             if (isReverseMode && currentNumber.length >= 2) {
               _processReverseAndAdd();
@@ -81,7 +83,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
                 "cat": selectedCategory,
               });
             }
-            currentNumber = ""; // ล้างช่องกรอก
+            currentNumber = ""; // ล้างช่องกรอกทันที
           }
         }
       }
@@ -157,7 +159,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
           Expanded(
             child: Row(
               children: [
-                _buildSidebar(), // Sidebar ฝั่งซ้ายพร้อมปุ่มลบทั้งหมด
+                _buildSidebar(), // Sidebar จัดกลุ่ม + ปุ่มลบทั้งหมด
                 Expanded(
                   child: Column(
                     children: [
@@ -169,7 +171,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
               ],
             ),
           ),
-          _buildSubmitButton(),
+          _buildSubmitButton(), // ปุ่มไปหน้าใส่ราคา
         ],
       ),
     );
@@ -321,7 +323,6 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
               ),
             ),
           ),
-          // ส่วนรายการ (Scrollable)
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
@@ -389,7 +390,6 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
               }).toList(),
             ),
           ),
-          // ✅ ปุ่มลบทั้งหมด (อยู่ด้านล่างสุดของ Sidebar)
           if (draftBets.isNotEmpty)
             InkWell(
               onTap: () => setState(() => draftBets.clear()),
@@ -508,7 +508,19 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
       child: InkWell(
-        onTap: () {},
+        onTap: () {
+          if (draftBets.isEmpty) return;
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PriceInputScreen(
+                draftBets: draftBets,
+                lottoTitle: widget.lottoTitle,
+                lottoKey: widget.lottoKey,
+              ),
+            ),
+          );
+        },
         child: Container(
           height: 42,
           decoration: BoxDecoration(
