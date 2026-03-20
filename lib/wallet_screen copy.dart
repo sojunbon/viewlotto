@@ -1,7 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ เพิ่ม import firestore
-import 'package:firebase_auth/firebase_auth.dart'; // ✅ เพิ่ม import auth
 import 'package:flutter/material.dart';
-import 'deposit_screen.dart';
+import 'deposit_screen.dart'; // ✅ อย่าลืม import หน้าแจ้งฝากที่ทำไว้
 import 'withdraw_screen.dart';
 
 class WalletScreen extends StatelessWidget {
@@ -22,7 +20,7 @@ class WalletScreen extends StatelessWidget {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            // ✅ แสดงยอดเงินคงเหลือ (ดึงจาก Firebase จริง)
+            // แสดงยอดเงินคงเหลือ (ตัวอย่าง)
             _buildBalanceCard(),
             const SizedBox(height: 30),
 
@@ -32,7 +30,7 @@ class WalletScreen extends StatelessWidget {
               "แจ้งฝากเงิน",
               Icons.add_circle_outline,
               Colors.green,
-              const DepositScreen(),
+              const DepositScreen(), // ลิงก์ไปหน้า Deposit
             ),
 
             const SizedBox(height: 15),
@@ -43,7 +41,7 @@ class WalletScreen extends StatelessWidget {
               "แจ้งถอนเงิน",
               Icons.remove_circle_outline,
               Colors.redAccent,
-              const WithdrawScreen(),
+              const WithdrawScreen(), // เปลี่ยนเป็น WithdrawScreen ภายหลัง
             ),
           ],
         ),
@@ -51,54 +49,33 @@ class WalletScreen extends StatelessWidget {
     );
   }
 
-  // ✅ แก้ไขฟังก์ชันนี้ให้ดึงข้อมูล Real-time
   Widget _buildBalanceCard() {
-    final user = FirebaseAuth.instance.currentUser;
-
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user?.uid)
-          .snapshots(),
-      builder: (context, snapshot) {
-        double credit = 0.0;
-        if (snapshot.hasData && snapshot.data!.exists) {
-          try {
-            var data = snapshot.data!.data() as Map<String, dynamic>;
-            credit = (data['credit'] ?? 0).toDouble();
-          } catch (e) {
-            credit = 0.0;
-          }
-        }
-
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(25),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF11998E), Color(0xFF38EF7D)],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(25),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF11998E), Color(0xFF38EF7D)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Column(
+        children: [
+          Text(
+            "ยอดเงินคงเหลือ",
+            style: TextStyle(color: Colors.white, fontSize: 16),
+          ),
+          SizedBox(height: 10),
+          Text(
+            "฿ 0.00",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
             ),
-            borderRadius: BorderRadius.circular(20),
           ),
-          child: Column(
-            children: [
-              const Text(
-                "ยอดเงินคงเหลือ",
-                style: TextStyle(color: Colors.white, fontSize: 16),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                "฿ ${credit.toStringAsFixed(2)}", // ✅ แสดงยอดเงินจริงจาก Firebase
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+        ],
+      ),
     );
   }
 

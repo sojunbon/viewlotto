@@ -1,10 +1,10 @@
 import 'dart:io';
-import 'dart:math';
+import 'dart:math'; // ✅ สำหรับการสุ่ม
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart'; // ✅ สำหรับ Clipboard (ปุ่มก๊อปปี้)
 import 'package:image_picker/image_picker.dart';
 import 'easyslip_api.dart'; // ✅ ตรวจสอบชื่อไฟล์ API ของคุณ
 
@@ -15,8 +15,7 @@ class DepositScreen extends StatefulWidget {
   State<DepositScreen> createState() => _DepositScreenState();
 }
 
-class _DepositScreenState extends State<DepositScreen>
-    with SingleTickerProviderStateMixin {
+class _DepositScreenState extends State<DepositScreen> {
   final TextEditingController _amountController = TextEditingController();
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final User? _user = FirebaseAuth.instance.currentUser;
@@ -25,26 +24,10 @@ class _DepositScreenState extends State<DepositScreen>
   bool _isLoading = false;
   bool _isAutoMode = false;
 
-  // ตัวแปรเก็บข้อมูลบัญชีของร้านที่ถูกสุ่มขึ้นมา
-  Map<String, dynamic>? _selectedReceiverBank;
-
-  late AnimationController _blinkController;
-
   @override
   void initState() {
     super.initState();
     _checkApiConfig();
-    _blinkController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _blinkController.dispose();
-    _amountController.dispose();
-    super.dispose();
   }
 
   Future<void> _checkApiConfig() async {
@@ -62,46 +45,7 @@ class _DepositScreenState extends State<DepositScreen>
     }
   }
 
-  // ✅ วิดเจ็ตตัวอักษรกระพริบ
-  Widget _buildBlinkingInstruction() {
-    return FadeTransition(
-      opacity: _blinkController,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        margin: const EdgeInsets.only(bottom: 15),
-        decoration: BoxDecoration(
-          color: Colors.deepOrange.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.deepOrange.withOpacity(0.3)),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.warning_amber_rounded,
-              color: Colors.deepOrange,
-              size: 22,
-            ),
-            SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                "กรุณาใช้ข้อมูลบัญชีที่ลง\nทะเบียนไว้กับเราในการโอนเงิน",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.deepOrange,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ✅ วิดเจ็ตสุ่มบัญชีธนาคารร้าน (พร้อมเก็บข้อมูลไว้ส่ง Admin)
+  // ✅ 1. วิดเจ็ตสุ่มบัญชีธนาคารพร้อมปุ่ม Copy
   Widget _buildRandomBankCard() {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('banktransfer').snapshots(),
@@ -110,12 +54,10 @@ class _DepositScreenState extends State<DepositScreen>
         final docs = snapshot.data!.docs;
         if (docs.isEmpty) return const Text("ไม่พบข้อมูลบัญชีธนาคาร");
 
-        // ถ้ายังไม่มีการเลือกบัญชี ให้สุ่มเลือกมา 1 บัญชี
-        if (_selectedReceiverBank == null) {
-          final random = Random();
-          _selectedReceiverBank =
-              docs[random.nextInt(docs.length)].data() as Map<String, dynamic>;
-        }
+        // 🎲 สุ่มเลือก 1 บัญชีจากรายการทั้งหมด
+        final random = Random();
+        final bankData =
+            docs[random.nextInt(docs.length)].data() as Map<String, dynamic>;
 
         return Container(
           width: double.infinity,
@@ -129,26 +71,39 @@ class _DepositScreenState extends State<DepositScreen>
               BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
             ],
           ),
+
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                "โอนเงินมาที่บัญชีนี้:",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blueGrey,
-                ),
+              const Row(
+                children: [
+                  Icon(
+                    Icons.account_balance,
+                    size: 18,
+                    color: Color(0xFF11998E),
+                  ),
+
+                  SizedBox(width: 8),
+                  Text(
+                    "โอนเงินมาที่บัญชีนี้",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blueGrey,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 15),
               Row(
                 children: [
+                  // โลโก้ธนาคาร
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child:
-                        _selectedReceiverBank!['banklogo_link'] != null &&
-                            _selectedReceiverBank!['banklogo_link'] != ""
+                        bankData['banklogo_link'] != null &&
+                            bankData['banklogo_link'] != ""
                         ? Image.network(
-                            _selectedReceiverBank!['banklogo_link'],
+                            bankData['banklogo_link'],
                             width: 50,
                             height: 50,
                             fit: BoxFit.cover,
@@ -166,15 +121,14 @@ class _DepositScreenState extends State<DepositScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _selectedReceiverBank!['bankname'] ?? "ธนาคาร",
+                          bankData['bankname'] ?? "ธนาคาร",
                           style: const TextStyle(
                             fontSize: 14,
                             color: Colors.grey,
                           ),
                         ),
                         Text(
-                          _selectedReceiverBank!['bankaccount'] ??
-                              "000-0-00000-0",
+                          bankData['bankaccount'] ?? "000-0-00000-0",
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -182,23 +136,15 @@ class _DepositScreenState extends State<DepositScreen>
                             letterSpacing: 1,
                           ),
                         ),
-                        Text(
-                          "ชื่อบัญชี: ${_selectedReceiverBank!['accountname'] ?? '-'}",
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.blueGrey,
-                          ),
-                        ),
                       ],
                     ),
                   ),
+                  // ✅ ปุ่มก๊อปปี้
                   IconButton(
                     icon: const Icon(Icons.copy, color: Color(0xFF11998E)),
                     onPressed: () {
                       Clipboard.setData(
-                        ClipboardData(
-                          text: _selectedReceiverBank!['bankaccount'] ?? "",
-                        ),
+                        ClipboardData(text: bankData['bankaccount'] ?? ""),
                       );
                       _showSnackBar("คัดลอกเลขบัญชีแล้ว");
                     },
@@ -212,15 +158,23 @@ class _DepositScreenState extends State<DepositScreen>
     );
   }
 
-  // --- Logic การส่งข้อมูล ---
+  // ✅ 2. เลือกรูปและบีบอัด (ป้องกันแอปหลุด)
   Future<void> _pickImage() async {
-    final pickedFile = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 40,
-    );
-    if (pickedFile != null) setState(() => _image = File(pickedFile.path));
+    try {
+      final ImagePicker picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 40,
+      );
+
+      if (pickedFile != null) {
+        setState(() => _image = File(pickedFile.path));
+      }
+    } catch (e) {
+      _showSnackBar("ไม่สามารถเลือกรูปภาพได้");
+    }
   }
 
   Future<void> _submitDeposit() async {
@@ -229,24 +183,15 @@ class _DepositScreenState extends State<DepositScreen>
       return;
     }
     setState(() => _isLoading = true);
-
-    // ดึงข้อมูลบัญชี User ล่าสุดก่อนส่ง
-    DocumentSnapshot userDoc = await _db
-        .collection('users')
-        .doc(_user!.uid)
-        .get();
-    Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
-
     if (_isAutoMode) {
-      await _handleAutoAPI(userData);
+      await _handleAutoAPI();
     } else {
-      await _handleManualUpload(userData);
+      await _handleManualUpload();
     }
-
     if (mounted) setState(() => _isLoading = false);
   }
 
-  Future<void> _handleAutoAPI(Map<String, dynamic> userData) async {
+  Future<void> _handleAutoAPI() async {
     var slipData = await SlipService().verifySlip(_image!);
     if (slipData != null) {
       double amountInSlip = (slipData['amount']['amount'] ?? 0).toDouble();
@@ -259,16 +204,16 @@ class _DepositScreenState extends State<DepositScreen>
       if (dup.docs.isNotEmpty) {
         _showSnackBar("สลิปนี้ถูกใช้งานไปแล้ว");
       } else if (amountInSlip == double.parse(_amountController.text)) {
-        await _saveTransaction(amountInSlip, transRef, true, userData);
+        await _saveTransaction(amountInSlip, transRef, true);
       } else {
-        _showSnackBar("ยอดเงินไม่ตรงกับสลิป");
+        _showSnackBar("ยอดเงินไม่ตรงกับสลิป (สลิปโอนจริง: $amountInSlip)");
       }
     } else {
-      _showSnackBar("ตรวจสอบสลิปไม่ผ่าน");
+      _showSnackBar("ตรวจสอบสลิปไม่ผ่าน กรุณาลองใหม่หรือติดต่อ Admin");
     }
   }
 
-  Future<void> _handleManualUpload(Map<String, dynamic> userData) async {
+  Future<void> _handleManualUpload() async {
     try {
       String fileName =
           'slips/${DateTime.now().millisecondsSinceEpoch}_${_user!.uid}.jpg';
@@ -282,19 +227,17 @@ class _DepositScreenState extends State<DepositScreen>
         double.parse(_amountController.text),
         fileName,
         false,
-        userData,
         slipUrl: url,
       );
     } catch (e) {
-      _showSnackBar("อัปโหลดไม่สำเร็จ: $e");
+      _showSnackBar("อัปโหลดรูปไม่สำเร็จ: $e");
     }
   }
 
   Future<void> _saveTransaction(
     double amount,
     String ref,
-    bool isAuto,
-    Map<String, dynamic> userData, {
+    bool isAuto, {
     String? slipUrl,
   }) async {
     final batch = _db.batch();
@@ -302,22 +245,11 @@ class _DepositScreenState extends State<DepositScreen>
 
     batch.set(docRef, {
       'uid': _user!.uid,
-      'displayName': userData['fullName'] ?? 'User',
+      'displayName': _user!.displayName ?? 'User',
       'amount': amount,
       'type': 'deposit',
       'status': isAuto ? 'approved' : 'pending',
       'timestamp': FieldValue.serverTimestamp(),
-
-      // ✅ ข้อมูลบัญชีของลูกค้า (ต้นทาง)
-      'userBankName': userData['bankName'] ?? '-',
-      'userBankAccount': userData['bankAccount'] ?? '-',
-      'userFullName': userData['fullName'] ?? '-',
-
-      // ✅ ข้อมูลบัญชีของร้านที่ลูกค้าเลือกโอนเข้า (ปลายทาง)
-      'receiverBankName': _selectedReceiverBank?['bankname'] ?? '-',
-      'receiverBankAccount': _selectedReceiverBank?['bankaccount'] ?? '-',
-      'receiverAccountName': _selectedReceiverBank?['accountname'] ?? '-',
-
       if (isAuto) 'transRef': ref,
       if (!isAuto) 'slipUrl': slipUrl,
     });
@@ -329,17 +261,19 @@ class _DepositScreenState extends State<DepositScreen>
     }
 
     await batch.commit();
+
     if (mounted) {
       Navigator.of(context, rootNavigator: true).pop();
       _showSnackBar(
-        isAuto ? "เติมเงินสำเร็จแล้ว!" : "ส่งข้อมูลแล้ว รอการตรวจสอบ",
+        isAuto ? "เติมเงินสำเร็จแล้ว!" : "ส่งข้อมูลแล้ว รอ Admin อนุมัติ",
       );
     }
   }
 
   void _showSnackBar(String msg) {
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
   }
 
   @override
@@ -356,7 +290,7 @@ class _DepositScreenState extends State<DepositScreen>
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  _buildBlinkingInstruction(),
+                  // ✅ แสดงบัตรธนาคารแบบสุ่ม
                   _buildRandomBankCard(),
 
                   Container(
@@ -375,11 +309,9 @@ class _DepositScreenState extends State<DepositScreen>
                           color: _isAutoMode ? Colors.green : Colors.orange,
                         ),
                         const SizedBox(width: 10),
-                        Text(
-                          _isAutoMode
-                              ? "ระบบอัตโนมัติ (เงินเข้าทันที)"
-                              : "รอ Admin ตรวจสอบ",
-                          style: const TextStyle(
+                        const Text(
+                          "ระบบอัตโนมัติ (เงินเข้าทันที)",
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
                           ),
@@ -392,7 +324,7 @@ class _DepositScreenState extends State<DepositScreen>
                     controller: _amountController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: "จำนวนเงินที่โอน",
+                      labelText: "จำนวนเงินโอน",
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -400,7 +332,7 @@ class _DepositScreenState extends State<DepositScreen>
                   GestureDetector(
                     onTap: _pickImage,
                     child: Container(
-                      height: 180,
+                      height: 200,
                       width: double.infinity,
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.grey.shade300),
@@ -415,7 +347,7 @@ class _DepositScreenState extends State<DepositScreen>
                                   size: 50,
                                   color: Colors.grey,
                                 ),
-                                Text("แนบสลิปการโอน"),
+                                Text("กดเพื่อแนบรูปสลิป"),
                               ],
                             )
                           : ClipRRect(
@@ -434,9 +366,11 @@ class _DepositScreenState extends State<DepositScreen>
                         borderRadius: BorderRadius.circular(30),
                       ),
                     ),
-                    child: const Text(
-                      "ยืนยันแจ้งฝากเงิน",
-                      style: TextStyle(
+                    child: Text(
+                      _isAutoMode
+                          ? "ยืนยันและเติมเงิน Auto"
+                          : "ส่งข้อมูลแจ้งฝาก",
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),

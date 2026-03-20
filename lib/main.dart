@@ -14,6 +14,7 @@ import 'admin_4digit_config.dart';
 import 'deposit_screen.dart';
 import 'wallet_screen.dart';
 import 'admin_set_result_screen.dart';
+import 'admin_transaction_screen.dart';
 
 void main() async {
   // 1. ตรวจสอบให้แน่ใจว่า Flutter Binding พร้อมใช้งานก่อนเริ่ม Firebase
@@ -88,6 +89,7 @@ class MyApp extends StatelessWidget {
         '/deposit': (context) => const DepositScreen(),
         '/adminresult': (context) =>
             const AdminSetResultScreen(), // ✅ เพิ่ม Route สำหรับตั้งค่าผลหวย เช็คผลหวย Admin
+        '/admintransactions': (context) => const AdminTransactionScreen(),
       },
       home: const AuthGate(),
     );

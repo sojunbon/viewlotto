@@ -4,48 +4,6 @@ import 'package:flutter/material.dart';
 class AdminTransactionScreen extends StatelessWidget {
   const AdminTransactionScreen({super.key});
 
-  // ✅ ฟังก์ชันอนุมัติรายการ (สำหรับ Manual)
-  Future<void> _approveManual(
-    BuildContext context,
-    String docId,
-    String uid,
-    double amount,
-  ) async {
-    try {
-      final batch = FirebaseFirestore.instance.batch();
-
-      // 1. อัปเดตสถานะเป็น approved
-      batch.update(
-        FirebaseFirestore.instance.collection('transactions').doc(docId),
-        {'status': 'approved', 'approvedAt': FieldValue.serverTimestamp()},
-      );
-
-      // 2. เติมเครดิตให้ User
-      batch.update(FirebaseFirestore.instance.collection('users').doc(uid), {
-        'credit': FieldValue.increment(amount),
-      });
-
-      await batch.commit();
-      if (context.mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("อนุมัติและเติมเงินสำเร็จ")),
-        );
-    } catch (e) {
-      debugPrint(e.toString());
-    }
-  }
-
-  // ❌ ฟังก์ชันปฏิเสธรายการ
-  Future<void> _rejectTransaction(String docId) async {
-    await FirebaseFirestore.instance
-        .collection('transactions')
-        .doc(docId)
-        .update({
-          'status': 'rejected',
-          'rejectedAt': FieldValue.serverTimestamp(),
-        });
-  }
-
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -53,171 +11,256 @@ class AdminTransactionScreen extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text(
-            "จัดการรายการฝากเงิน",
-            style: TextStyle(color: Colors.white, fontSize: 18),
+            "จัดการฝาก-ถอน",
+            style: TextStyle(color: Colors.white),
           ),
           backgroundColor: const Color(0xFF1A3D5D),
-          iconTheme: const IconThemeData(color: Colors.white),
           bottom: const TabBar(
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.greenAccent,
+            indicatorColor: Colors.orange,
             tabs: [
-              Tab(text: "รอตรวจสอบ (Manual)"),
-              Tab(text: "สำเร็จแล้ว (Auto/Approve)"),
+              Tab(text: "รายการรออนุมัติ"),
+              Tab(text: "ประวัติทั้งหมด"),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildTransactionList('pending'), // รายการที่ต้องกดมือ
-            _buildTransactionList(
-              'approved',
-            ), // รายการที่เข้าออโต้หรืออนุมัติแล้ว
+            _buildTransactionList(isPending: true),
+            _buildTransactionList(isPending: false),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTransactionList(String status) {
+  Widget _buildTransactionList({required bool isPending}) {
+    Query query = FirebaseFirestore.instance.collection('transactions');
+
+    if (isPending) {
+      query = query.where('status', isEqualTo: 'pending');
+    }
+
+    // ⚠️ อย่าลืมสร้าง Index ใน Firebase ตามลิงก์ใน Debug Console นะครับ
+    query = query.orderBy('timestamp', descending: true);
+
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('transactions')
-          .where('status', isEqualTo: status)
-          .orderBy('timestamp', descending: true)
-          .snapshots(),
+      stream: query.snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError)
+          return Center(child: Text("เกิดข้อผิดพลาด: ${snapshot.error}"));
         if (snapshot.connectionState == ConnectionState.waiting)
           return const Center(child: CircularProgressIndicator());
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(
-            child: Text(
-              "ไม่มีรายการในหมวดนี้",
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          );
-        }
-
-        var docs = snapshot.data!.docs;
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+          return const Center(child: Text("ไม่มีรายการในขณะนี้"));
 
         return ListView.builder(
-          itemCount: docs.length,
+          itemCount: snapshot.data!.docs.length,
           padding: const EdgeInsets.all(10),
           itemBuilder: (context, index) {
-            var data = docs[index].data() as Map<String, dynamic>;
-            String docId = docs[index].id;
-            bool isAuto = data.containsKey(
-              'transRef',
-            ); // เช็คว่าเป็นรายการจาก API หรือไม่
+            var doc = snapshot.data!.docs[index];
+            var data = doc.data() as Map<String, dynamic>;
 
-            return Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              margin: const EdgeInsets.only(bottom: 10),
-              child: ExpansionTile(
-                leading: CircleAvatar(
-                  backgroundColor: isAuto
-                      ? Colors.green[100]
-                      : Colors.orange[100],
-                  child: Icon(
-                    isAuto ? Icons.bolt : Icons.hourglass_empty,
-                    color: isAuto ? Colors.green : Colors.orange,
-                    size: 20,
-                  ),
-                ),
-                title: Text(
-                  "ยอดฝาก: ${data['amount']} บาท",
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text("โดย: ${data['displayName'] ?? 'ไม่ระบุชื่อ'}"),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(15.0),
-                    child: Column(
-                      children: [
-                        if (data['slipUrl'] != null) // ถ้ามีรูปสลิป (Manual)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              data['slipUrl'],
-                              height: 300,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const Text("โหลดรูปไม่ได้"),
-                            ),
-                          ),
-                        const SizedBox(height: 15),
-                        if (isAuto)
-                          _infoRow(
-                            "เลขที่อ้างอิงธนาคาร (Ref):",
-                            data['transRef'],
-                          ),
-
-                        _infoRow(
-                          "วันเวลาที่ทำรายการ:",
-                          data['timestamp']?.toDate().toString().split(
-                                '.',
-                              )[0] ??
-                              '-',
-                        ),
-
-                        if (status == 'pending') ...[
-                          const Divider(),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              ElevatedButton.icon(
-                                onPressed: () => _rejectTransaction(docId),
-                                icon: const Icon(Icons.cancel),
-                                label: const Text("ปฏิเสธ"),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.redAccent,
-                                ),
-                              ),
-                              ElevatedButton.icon(
-                                onPressed: () => _approveManual(
-                                  context,
-                                  docId,
-                                  data['uid'],
-                                  (data['amount'] as num).toDouble(),
-                                ),
-                                icon: const Icon(Icons.check_circle),
-                                label: const Text("อนุมัติเงิน"),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
+            return _buildTransactionCard(context, doc.id, data);
           },
         );
       },
     );
   }
 
-  Widget _infoRow(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildTransactionCard(
+    BuildContext context,
+    String docId,
+    Map<String, dynamic> data,
+  ) {
+    bool isDeposit = data['type'] == 'deposit';
+    Color typeColor = isDeposit ? Colors.green : Colors.red;
+
+    return Card(
+      elevation: 3,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: ExpansionTile(
+        leading: Icon(
+          isDeposit ? Icons.arrow_downward : Icons.arrow_upward,
+          color: typeColor,
+        ),
+        title: Text(
+          "${isDeposit ? 'ฝากเงิน' : 'ถอนเงิน'} - ฿${data['amount']}",
+          style: TextStyle(fontWeight: FontWeight.bold, color: typeColor),
+        ),
+        subtitle: Text("โดย: ${data['displayName'] ?? 'ไม่ระบุชื่อ'}"),
         children: [
-          Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          Padding(
+            padding: const EdgeInsets.all(15.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Divider(),
+
+                // --- ส่วนข้อมูลบัญชี ---
+                if (isDeposit) ...[
+                  _infoRow(
+                    "โอนจาก (ลูกค้า):",
+                    "${data['userBankName']} (${data['userBankAccount']})",
+                  ),
+                  _infoRow(
+                    "โอนเข้า (ร้าน):",
+                    "${data['receiverBankName']} (${data['receiverBankAccount']})",
+                  ),
+                ] else ...[
+                  _infoRow(
+                    "ถอนเข้าบัญชีลูกค้า:",
+                    "${data['bankName']} (${data['bankAccount']})",
+                  ),
+                ],
+
+                const SizedBox(height: 10),
+
+                // --- ส่วนแสดงสลิป (เฉพาะรายการฝาก) ---
+                if (isDeposit && data['slipUrl'] != null)
+                  GestureDetector(
+                    onTap: () => _showFullImage(context, data['slipUrl']),
+                    child: Container(
+                      height: 150,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        image: DecorationImage(
+                          image: NetworkImage(data['slipUrl']),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.zoom_in,
+                          color: Colors.white,
+                          size: 40,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                const SizedBox(height: 15),
+
+                // --- ปุ่มจัดการ (เฉพาะรายการ Pending) ---
+                if (data['status'] == 'pending')
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                          ),
+                          onPressed: () =>
+                              _updateStatus(context, docId, data, 'approved'),
+                          child: const Text(
+                            "อนุมัติ",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                          ),
+                          onPressed: () =>
+                              _updateStatus(context, docId, data, 'rejected'),
+                          child: const Text("ปฏิเสธ"),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 13, color: Colors.blueGrey),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFullImage(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.network(url),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("ปิด"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ ระบบอัปเดตสถานะและจัดการเครดิต
+  Future<void> _updateStatus(
+    BuildContext context,
+    String docId,
+    Map<String, dynamic> data,
+    String newStatus,
+  ) async {
+    final _db = FirebaseFirestore.instance;
+    final batch = _db.batch();
+
+    try {
+      // 1. อัปเดตสถานะ Transaction
+      batch.update(_db.collection('transactions').doc(docId), {
+        'status': newStatus,
+      });
+
+      // 2. ถ้าเป็นการอนุมัติ "ฝากเงิน" ต้องไปเพิ่มเครดิตให้ User
+      // (ส่วนการถอนเงิน เครดิตถูกหักไปแล้วตั้งแต่ตอน User กดถอนในแอป)
+      if (newStatus == 'approved' && data['type'] == 'deposit') {
+        batch.update(_db.collection('users').doc(data['uid']), {
+          'credit': FieldValue.increment(data['amount']),
+        });
+      }
+
+      // 3. ถ้า "ปฏิเสธ" การถอนเงิน ต้องคืนเครดิตให้ User
+      if (newStatus == 'rejected' && data['type'] == 'withdraw') {
+        batch.update(_db.collection('users').doc(data['uid']), {
+          'credit': FieldValue.increment(data['amount']),
+        });
+      }
+
+      await batch.commit();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("ทำรายการสำเร็จ: $newStatus")));
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("เกิดข้อผิดพลาด: $e")));
+    }
   }
 }

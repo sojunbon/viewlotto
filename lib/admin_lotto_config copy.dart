@@ -16,20 +16,18 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final ImagePicker _picker = ImagePicker();
 
-  // --- ฟังก์ชันอัปโหลดรูปภาพ (Fix: จำกัดขนาดเพื่อป้องกันแอปหลุด) ---
+  // --- ฟังก์ชันอัปโหลดรูปภาพ (ปรับปรุงป้องกันแอปหลุด) ---
   Future<void> _uploadImage(TextEditingController controller) async {
     try {
-      // 1. เลือกรูปภาพพร้อมบีบอัด (สำคัญมากเพื่อป้องกัน Memory Crash)
+      // 1. เลือกรูปภาพ
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1024, // ✅ จำกัดความกว้าง
-        maxHeight: 1024, // ✅ จำกัดความสูง
-        imageQuality: 40, // ✅ ลดคุณภาพไฟล์เพื่อความเสถียรบน Emulator
+        imageQuality: 50, // ลดขนาดไฟล์เพื่อป้องกัน Out of Memory
       );
 
-      if (image == null) return;
+      if (image == null) return; // ยูสเซอร์กดยกเลิก
 
-      // 2. แสดง Loading
+      // 2. แสดง Loading Dialog
       if (!mounted) return;
       showDialog(
         context: context,
@@ -39,20 +37,24 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
         ),
       );
 
-      // 3. อัปโหลดไปยัง Firebase Storage
+      // 3. เตรียมการอัปโหลด
       File file = File(image.path);
       String fileName =
           'lotto_flags/${DateTime.now().millisecondsSinceEpoch}.png';
       Reference storageRef = _storage.ref().child(fileName);
 
+      // 4. เริ่มอัปโหลด
       UploadTask uploadTask = storageRef.putFile(file);
       TaskSnapshot snapshot = await uploadTask;
+
+      // 5. รับลิงก์ URL
       String downloadUrl = await snapshot.ref.getDownloadURL();
 
       if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop(); // ปิด Loading
+        // ปิด Loading Dialog (ใช้ rootNavigator เพื่อความชัวร์)
+        Navigator.of(context, rootNavigator: true).pop();
         setState(() {
-          controller.text = downloadUrl; // ใส่ URL ลงในฟิลด์ Link
+          controller.text = downloadUrl;
         });
         ScaffoldMessenger.of(
           context,
@@ -60,12 +62,12 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
       }
     } catch (e) {
       if (mounted) {
-        if (Navigator.canPop(context))
-          Navigator.of(context, rootNavigator: true).pop();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}")));
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("เกิดข้อผิดพลาด: ${e.toString()}")),
+        );
       }
+      debugPrint("Upload Error: $e");
     }
   }
 
@@ -101,6 +103,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
             itemBuilder: (context, index) {
               final data = docs[index].data() as Map<String, dynamic>;
               final docId = docs[index].id;
+              final int lottoNumber = data['number'] ?? 0;
 
               return Card(
                 elevation: 3,
@@ -118,7 +121,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                     child:
                         (data['lottolink'] == null || data['lottolink'] == "")
                         ? Text(
-                            data['number'].toString(),
+                            lottoNumber.toString(),
                             style: const TextStyle(color: Colors.white),
                           )
                         : null,
@@ -128,7 +131,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text(
-                    "ID: ${data['lottotype'] ?? '-'} | จ่าย 3 ตัว: x${data['digit3']}",
+                    "ID: ${data['lottotype'] ?? '-'} | โต๊ด: x${data['swift'] ?? 0}",
                   ),
                   trailing: const Icon(Icons.edit, color: Colors.blue),
                   onTap: () => _showEditDialog(docId, data, isNew: false),
@@ -146,13 +149,12 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
     );
   }
 
-  // --- Dialog เพิ่ม/แก้ไขข้อมูล ---
   void _showEditDialog(
     String docId,
     Map<String, dynamic> data, {
     required bool isNew,
   }) async {
-    int nextNumber = isNew ? 1 : (data['number'] ?? 0);
+    int nextNumber = 1;
     if (isNew) {
       var lastDoc = await _db
           .collection('configs')
@@ -161,8 +163,11 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
           .orderBy('number', descending: true)
           .limit(1)
           .get();
-      if (lastDoc.docs.isNotEmpty)
+      if (lastDoc.docs.isNotEmpty) {
         nextNumber = (lastDoc.docs.first.get('number') ?? 0) + 1;
+      }
+    } else {
+      nextNumber = data['number'] ?? 0;
     }
 
     TextEditingController numController = TextEditingController(
@@ -229,7 +234,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                   hint: "เช่น thai, lao, hanoy",
                 ),
 
-                // ฟิลด์รูปภาพพร้อมปุ่มอัปโหลด
+                // ฟิลด์ Link พร้อมปุ่ม Upload
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: TextField(

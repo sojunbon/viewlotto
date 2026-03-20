@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'account_setting_screen.dart'; // ✅ ตรวจสอบว่าชื่อไฟล์ตรงกับที่คุณสร้าง
+import 'account_setting_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -36,6 +36,8 @@ class ProfileScreen extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () async {
                   await FirebaseAuth.instance.signOut();
+                  // เมื่อ Logout ให้เด้งไปหน้า Login (ถ้าคุณตั้งชื่อ Route ไว้)
+                  // Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
@@ -107,11 +109,7 @@ class ProfileScreen extends StatelessWidget {
       builder: (context, snapshot) {
         double credit = 0.0;
         if (snapshot.hasData && snapshot.data!.exists) {
-          try {
-            credit = (snapshot.data!.get('credit') ?? 0).toDouble();
-          } catch (e) {
-            credit = 0.0;
-          }
+          credit = (snapshot.data!.get('credit') ?? 0).toDouble();
         }
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -130,7 +128,7 @@ class ProfileScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text("ยอดเงินคงเหลือ", style: TextStyle(color: Colors.grey)),
-                  const SizedBox(height: 5),
+                  SizedBox(height: 5),
                   Text(
                     "เครดิตในบัญชี",
                     style: TextStyle(fontWeight: FontWeight.bold),
@@ -170,17 +168,7 @@ class ProfileScreen extends StatelessWidget {
             () {},
           ),
           const Divider(height: 1),
-
-          // ✅ แก้ไข: เพิ่ม Navigator เพื่อไปยังหน้าตั้งค่าบัญชี
-          _menuTile(Icons.settings_outlined, "ตั้งค่าบัญชี", () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const AccountSettingScreen(),
-              ),
-            );
-          }),
-
+          _menuTile(Icons.settings_outlined, "ตั้งค่าบัญชี", () {}),
           const Divider(height: 1),
           _menuTile(Icons.help_outline, "ศูนย์ช่วยเหลือ / ติดต่อแอดมิน", () {}),
         ],

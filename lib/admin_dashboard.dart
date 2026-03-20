@@ -70,6 +70,13 @@ class AdminDashboard extends StatelessWidget {
                 ),
                 _adminMenu(
                   context,
+                  "อนุมัติฝาก/ถอน",
+                  Icons.approval,
+                  Colors.teal,
+                  '/admintransactions',
+                ),
+                _adminMenu(
+                  context,
                   "ดูโพยทั้งหมด",
                   Icons.receipt_long,
                   Colors.purple,
