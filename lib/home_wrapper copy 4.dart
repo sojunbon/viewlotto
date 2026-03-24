@@ -1,9 +1,9 @@
-import 'dart:async'; // ✅ เพิ่มสำหรับ Timer
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+// ส่วนของ Import หน้าต่างๆ
 import 'number_input_screen.dart';
 import 'wallet_screen.dart';
 import 'history_screen.dart';
@@ -58,22 +58,27 @@ class _HomeWrapperState extends State<HomeWrapper> {
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home),
             label: "หน้าแรก",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.account_balance_wallet_outlined),
+            activeIcon: Icon(Icons.account_balance_wallet),
             label: "ฝาก/ถอน",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.casino_outlined),
+            activeIcon: Icon(Icons.casino),
             label: "แทงหวย",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long_outlined),
+            activeIcon: Icon(Icons.receipt_long),
             label: "โพย",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
             label: "โปรไฟล์",
           ),
         ],
@@ -136,112 +141,17 @@ class _HomeWrapperState extends State<HomeWrapper> {
 }
 
 // ------------------------------------------------------------------
-// ✅ หน้า BetTypeScreen (พร้อมระบบนับถอยหลัง Real-time)
+// ✅ หน้า BetTypeScreen (Logic ปรับปรุงใหม่ แม่นยำเรื่องวันที่ล่วงหน้า)
 // ------------------------------------------------------------------
-class BetTypeScreen extends StatefulWidget {
+class BetTypeScreen extends StatelessWidget {
   const BetTypeScreen({super.key});
 
-  @override
-  State<BetTypeScreen> createState() => _BetTypeScreenState();
-}
-
-class _BetTypeScreenState extends State<BetTypeScreen> {
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    // ✅ สั่งให้ UI อัปเดตทุกวินาทีเพื่อให้นาฬิกาเดิน
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  // ✅ ฟังก์ชันคำนวณหาวันเวลาปิดรับแทงที่ใกล้ที่สุด
-  DateTime? _getClosingDateTime(Map<String, dynamic> data) {
-    try {
-      final now = DateTime.now();
-      final todayMidnight = DateTime(now.year, now.month, now.day);
-      String closeStr = data['closeTime'] ?? "15:30";
-      final DateFormat timeFormat = DateFormat('HH:mm');
-      DateTime closeTimeParsed = timeFormat.parse(closeStr);
-
-      DateTime targetClosing;
-
-      String? specificDatesStr = data['specificDates'];
-      if (specificDatesStr != null && specificDatesStr.isNotEmpty) {
-        // กรณีหวยระบุวันที่ (เช่น หวยไทย 1, 16)
-        List<int> openDates = specificDatesStr
-            .split(',')
-            .map((e) => int.tryParse(e.trim()) ?? 0)
-            .toList();
-        List<DateTime> upcomingDates = [];
-
-        for (int day in openDates) {
-          if (day == 0) continue;
-          DateTime d = DateTime(
-            now.year,
-            now.month,
-            day,
-            closeTimeParsed.hour,
-            closeTimeParsed.minute,
-          );
-          if (d.isBefore(now))
-            d = DateTime(
-              now.year,
-              now.month + 1,
-              day,
-              closeTimeParsed.hour,
-              closeTimeParsed.minute,
-            );
-          upcomingDates.add(d);
-        }
-        upcomingDates.sort();
-        targetClosing = upcomingDates.first;
-      } else {
-        // กรณีหวยรายวัน (จันทร์-อาทิตย์)
-        targetClosing = DateTime(
-          now.year,
-          now.month,
-          now.day,
-          closeTimeParsed.hour,
-          closeTimeParsed.minute,
-        );
-        if (targetClosing.isBefore(now)) {
-          targetClosing = targetClosing.add(const Duration(days: 1));
-        }
-      }
-      return targetClosing;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // ✅ ฟังก์ชันจัดรูปแบบเวลาถอยหลัง
-  String _getCountdownText(DateTime closingTime) {
-    final now = DateTime.now();
-    final diff = closingTime.difference(now);
-
-    if (diff.isNegative) return "ปิดรับแทง";
-
-    if (diff.inDays > 0) {
-      return "${diff.inDays} วัน ${diff.inHours % 24} ชม.";
-    } else {
-      return "${diff.inHours.toString().padLeft(2, '0')}:${(diff.inMinutes % 60).toString().padLeft(2, '0')}:${(diff.inSeconds % 60).toString().padLeft(2, '0')}";
-    }
-  }
-
   bool _isLottoOpen(Map<String, dynamic> data) {
-    // ใช้ Logic เดิมที่คุณมี แต่ปรับเรื่อง targetDate เดือนถัดไปตามที่คุยกัน
     try {
       final now = DateTime.now();
       final todayMidnight = DateTime(now.year, now.month, now.day);
+      final todayWeekday = now.weekday;
+
       if (data['lottostatus'] == false) return false;
 
       int preOpenDays = data['preOpenDays'] ?? 0;
@@ -253,12 +163,23 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
             .map((e) => int.tryParse(e.trim()) ?? 0)
             .toList();
         bool isDateMatch = false;
+
         for (int openDate in openDates) {
           if (openDate == 0) continue;
+
+          // 1. สร้างวันที่หวยออกของ "เดือนนี้"
           DateTime targetDate = DateTime(now.year, now.month, openDate);
-          if (todayMidnight.isAfter(targetDate))
+
+          // 2. ✅ จุดสำคัญ: ถ้าวันนี้ (24 มี.ค.) มันเลยวันหวยออกของเดือนนี้ไปแล้ว (16 มี.ค.)
+          // ให้ขยับ targetDate ไปเป็นเดือนหน้า (1 เม.ย.) อัตโนมัติ
+          if (todayMidnight.isAfter(targetDate)) {
             targetDate = DateTime(now.year, now.month + 1, openDate);
+          }
+
+          // 3. คำนวณหาความต่างของจำนวนวัน
           int dayDiff = targetDate.difference(todayMidnight).inDays;
+
+          // ถ้าอยู่ในช่วงวันที่ตั้งค่าไว้ (เช่น 0-10 วันก่อนหวยออก)
           if (dayDiff >= 0 && dayDiff <= preOpenDays) {
             isDateMatch = true;
             break;
@@ -266,20 +187,116 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
         }
         if (!isDateMatch) return false;
       } else {
-        if (!(data['playDays'] ?? []).contains(now.weekday)) return false;
+        List<dynamic> playDays = data['playDays'] ?? [1, 2, 3, 4, 5, 6, 7];
+        if (!playDays.contains(todayWeekday)) return false;
       }
 
-      final DateFormat tf = DateFormat('HH:mm');
-      DateTime oT = tf.parse(data['openTime'] ?? "06:00");
-      DateTime cT = tf.parse(data['closeTime'] ?? "15:30");
-      oT = DateTime(now.year, now.month, now.day, oT.hour, oT.minute);
-      cT = DateTime(now.year, now.month, now.day, cT.hour, cT.minute);
+      // 5. เช็คเวลาเปิด-ปิด
+      String openStr = data['openTime'] ?? "06:00";
+      String closeStr = data['closeTime'] ?? "15:30";
+      final DateFormat timeFormat = DateFormat('HH:mm');
 
-      return now.isAfter(oT) && now.isBefore(cT);
+      DateTime openTime = timeFormat.parse(openStr);
+      DateTime closeTime = timeFormat.parse(closeStr);
+
+      openTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        openTime.hour,
+        openTime.minute,
+      );
+      closeTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        closeTime.hour,
+        closeTime.minute,
+      );
+
+      return now.isAfter(openTime) && now.isBefore(closeTime);
     } catch (e) {
       return false;
     }
   }
+
+  /*
+  bool _isLottoOpen(Map<String, dynamic> data) {
+    try {
+      final now = DateTime.now();
+      // สร้าง DateTime ของวันนี้เวลา 00:00 น. เพื่อใช้คำนวณระยะห่างของวัน
+      final todayMidnight = DateTime(now.year, now.month, now.day);
+      final todayWeekday = now.weekday; // 1=จันทร์, 7=อาทิตย์
+
+      // 1. เช็คสถานะเปิด/ปิด จาก Admin (Manual Switch)
+      if (data['lottostatus'] == false) return false;
+
+      // 2. ดึงค่าเปิดล่วงหน้ากี่วัน
+      int preOpenDays = data['preOpenDays'] ?? 0;
+
+      // 3. เช็คเงื่อนไข "ระบุวันที่" (เช่น 1, 16)
+      String? specificDatesStr = data['specificDates'];
+      if (specificDatesStr != null && specificDatesStr.isNotEmpty) {
+        List<int> openDates = specificDatesStr
+            .split(',')
+            .map((e) => int.tryParse(e.trim()) ?? 0)
+            .toList();
+        bool isDateMatch = false;
+
+        for (int openDate in openDates) {
+          if (openDate == 0) continue;
+
+          // สร้างวันที่หวยออกของเดือนนี้
+          DateTime targetDate = DateTime(now.year, now.month, openDate);
+
+          // ✅ คำนวณหาความต่างของจำนวนวัน (ใช้ .difference)
+          // วันหวยออก ลบ วันปัจจุบัน
+          int dayDiff = targetDate.difference(todayMidnight).inDays;
+
+          // เงื่อนไข:
+          // - ต้องไม่เลยวันหวยออก (dayDiff >= 0)
+          // - ต้องอยู่ในช่วงวันที่เปิดรับล่วงหน้า (dayDiff <= preOpenDays)
+          if (dayDiff >= 0 && dayDiff <= preOpenDays) {
+            isDateMatch = true;
+            break;
+          }
+        }
+        if (!isDateMatch) return false;
+      } else {
+        // 4. ถ้าไม่มีระบุวันที่ ให้เช็คตามวันในสัปดาห์ (จันทร์-อาทิตย์)
+        List<dynamic> playDays = data['playDays'] ?? [1, 2, 3, 4, 5, 6, 7];
+        if (!playDays.contains(todayWeekday)) return false;
+      }
+
+      // 5. เช็คเวลาเปิด-ปิด (HH:mm)
+      String openStr = data['openTime'] ?? "06:00";
+      String closeStr = data['closeTime'] ?? "15:30";
+      final DateFormat timeFormat = DateFormat('HH:mm');
+
+      DateTime openTime = timeFormat.parse(openStr);
+      DateTime closeTime = timeFormat.parse(closeStr);
+
+      openTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        openTime.hour,
+        openTime.minute,
+      );
+      closeTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        closeTime.hour,
+        closeTime.minute,
+      );
+
+      return now.isAfter(openTime) && now.isBefore(closeTime);
+    } catch (e) {
+      return false;
+    }
+  }
+  */
 
   @override
   Widget build(BuildContext context) {
@@ -300,7 +317,7 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
             padding: const EdgeInsets.all(15),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
-              childAspectRatio: 0.95,
+              childAspectRatio: 1.1,
               mainAxisSpacing: 10,
               crossAxisSpacing: 10,
             ),
@@ -308,7 +325,6 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
             itemBuilder: (context, index) {
               final data = docs[index].data() as Map<String, dynamic>;
               bool isOpen = _isLottoOpen(data);
-              DateTime? closingTime = _getClosingDateTime(data);
 
               return AbsorbPointer(
                 absorbing: !isOpen,
@@ -320,8 +336,8 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
                         context,
                         MaterialPageRoute(
                           builder: (context) => NumberInputScreen(
-                            lottoTitle: data['lottoname'],
-                            lottoKey: data['lottotype'],
+                            lottoTitle: data['lottoname'] ?? 'หวย',
+                            lottoKey: data['lottotype'] ?? 'unknown',
                           ),
                         ),
                       );
@@ -338,8 +354,10 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
                               data['lottolink'] != "")
                             Image.network(
                               data['lottolink'],
-                              height: 50,
-                              width: 50,
+                              height: 55,
+                              width: 55,
+                              errorBuilder: (c, e, s) =>
+                                  const Icon(Icons.casino, size: 40),
                             )
                           else
                             const Icon(
@@ -347,48 +365,11 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
                               size: 40,
                               color: Color(0xFF11998E),
                             ),
-                          const SizedBox(height: 5),
+                          const SizedBox(height: 8),
                           Text(
                             data['lottoname'] ?? '',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          const SizedBox(height: 5),
-
-                          // ✅ แสดงตัวนับถอยหลัง
-                          if (isOpen && closingTime != null)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.red[50],
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.access_time,
-                                    size: 12,
-                                    color: Colors.red,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _getCountdownText(closingTime),
-                                    style: const TextStyle(
-                                      color: Colors.red,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
                           const SizedBox(height: 4),
                           Text(
                             isOpen ? "🟢 เปิดรับแทง" : "🔴 ปิดรับแทง",

@@ -133,8 +133,9 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                     ),
                   ),
                   subtitle: Text(
-                    "ปิดรับ: ${data['closeTime'] ?? '15:30'} | ล่วงหน้า: ${data['preOpenDays'] ?? 0} วัน",
+                    "ปิดรับ: ${data['closeTime'] ?? '15:30'} | สถานะ: ${isLottoActive ? 'เปิด' : 'ปิด'}",
                   ),
+                  // ✅ เพิ่ม Switch เปิด/ปิด หวยหน้าลิสต์
                   trailing: Switch(
                     value: isLottoActive,
                     activeColor: Colors.green,
@@ -198,13 +199,10 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
     TextEditingController closeTimeController = TextEditingController(
       text: data['closeTime'] ?? "15:30",
     );
+
+    // ✅ ฟิลด์ระบุวันที่ (เช่น 1,16)
     TextEditingController specificDatesController = TextEditingController(
       text: data['specificDates'] ?? "",
-    );
-
-    // ✅ เพิ่ม Controller สำหรับวันเปิดล่วงหน้า
-    TextEditingController preOpenDaysController = TextEditingController(
-      text: (data['preOpenDays'] ?? "0").toString(),
     );
 
     TextEditingController d4 = TextEditingController(
@@ -223,6 +221,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
       text: (data['swift'] ?? "150").toString(),
     );
 
+    // ✅ ฟิลด์เลือกวันในสัปดาห์
     List<int> selectedDays = List<int>.from(
       data['playDays'] ?? [1, 2, 3, 4, 5, 6, 7],
     );
@@ -267,6 +266,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                     hint: "เช่น thai, lao, hanoy",
                   ),
 
+                  // ✅ ส่วนตั้งค่าเวลา
                   Row(
                     children: [
                       Expanded(
@@ -293,6 +293,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                   const SizedBox(height: 5),
+                  // ✅ UI เลือก จ.-อา.
                   Wrap(
                     spacing: 4,
                     children: List.generate(7, (index) {
@@ -318,18 +319,11 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                     }),
                   ),
                   const SizedBox(height: 10),
+                  // ✅ ฟิลด์ระบุวันที่
                   _buildTextField(
-                    "ระบุวันที่เปิด (เช่น 1,16)",
+                    "หรือระบุวันที่เปิด (เช่น 1,16)",
                     specificDatesController,
                     hint: "เว้นว่างไว้หากใช้ จ-อา",
-                  ),
-
-                  // ✅ ฟิลด์ใหม่: เปิดรับล่วงหน้า
-                  _buildTextField(
-                    "เปิดรับล่วงหน้า (กี่วันก่อนหวยออก)",
-                    preOpenDaysController,
-                    isNum: true,
-                    hint: "เช่น 5",
                   ),
 
                   const Divider(),
@@ -395,10 +389,9 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                   'lottolink': linkController.text,
                   'openTime': openTimeController.text,
                   'closeTime': closeTimeController.text,
-                  'playDays': selectedDays,
-                  'specificDates': specificDatesController.text.trim(),
-                  // ✅ บันทึกค่าเปิดล่วงหน้า
-                  'preOpenDays': int.tryParse(preOpenDaysController.text) ?? 0,
+                  'playDays': selectedDays, // ✅ เก็บเป็น Array [1,3,5]
+                  'specificDates': specificDatesController.text
+                      .trim(), // ✅ เก็บเป็น String "1,16"
                   'digit4': int.tryParse(d4.text) ?? 0,
                   'digit3': int.tryParse(d3.text) ?? 0,
                   'digit2': int.tryParse(d2.text) ?? 0,
