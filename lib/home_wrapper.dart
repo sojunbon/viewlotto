@@ -237,6 +237,7 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
     }
   }
 
+  /*
   bool _isLottoOpen(Map<String, dynamic> data) {
     // ใช้ Logic เดิมที่คุณมี แต่ปรับเรื่อง targetDate เดือนถัดไปตามที่คุยกัน
     try {
@@ -276,6 +277,85 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
       cT = DateTime(now.year, now.month, now.day, cT.hour, cT.minute);
 
       return now.isAfter(oT) && now.isBefore(cT);
+    } catch (e) {
+      return false;
+    }
+  }
+  */
+
+  bool _isLottoOpen(Map<String, dynamic> data) {
+    try {
+      final now = DateTime.now();
+      final todayMidnight = DateTime(now.year, now.month, now.day);
+
+      // 1. เช็คสถานะหลักก่อน
+      if (data['lottostatus'] == false) return false;
+
+      // ดึงค่า config ต่างๆ
+      String? specificDatesStr = data['specificDates']; // เช่น "1,16"
+      int preOpenDays = data['preOpenDays'] ?? 0; // เช่น 10 วันล่วงหน้า
+
+      final DateFormat tf = DateFormat('HH:mm');
+      DateTime oT = tf.parse(data['openTime'] ?? "06:00");
+      DateTime cT = tf.parse(data['closeTime'] ?? "15:00"); // ปิด 15:00
+
+      // ตั้งค่าเวลาเปิด-ปิด ของวันนี้
+      DateTime openTimeToday = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        oT.hour,
+        oT.minute,
+      );
+      DateTime closeTimeToday = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        cT.hour,
+        cT.minute,
+      );
+
+      // --- ส่วนการเช็ควันที่ (Specific Dates) ---
+      if (specificDatesStr != null && specificDatesStr.isNotEmpty) {
+        List<int> openDates = specificDatesStr
+            .split(',')
+            .map((e) => int.tryParse(e.trim()) ?? 0)
+            .toList();
+
+        bool isTodayTheOpenDay = openDates.contains(now.day);
+
+        // ✅ เคสที่ 1: วันนี้คือวันที่หวยออก (เช่น วันที่ 1 หรือ 16)
+        if (isTodayTheOpenDay) {
+          // ต้องอยู่ระหว่างเวลาเปิด และ ยังไม่ถึงเวลาปิด (15:00)
+          return now.isAfter(openTimeToday) && now.isBefore(closeTimeToday);
+        }
+
+        // ✅ เคสที่ 2: วันนี้ไม่ใช่ตัวเลขวันที่หวยออก แต่เช็คว่าอยู่ในช่วง "เปิดรับล่วงหน้า" หรือไม่
+        bool isWithinPreOpenRange = false;
+        for (int openDate in openDates) {
+          if (openDate == 0) continue;
+
+          // หาวันที่เป้าหมายถัดไป
+          DateTime targetDate = DateTime(now.year, now.month, openDate);
+          if (todayMidnight.isAfter(targetDate)) {
+            targetDate = DateTime(now.year, now.month + 1, openDate);
+          }
+
+          int diffDays = targetDate.difference(todayMidnight).inDays;
+
+          // ถ้าอยู่ในช่วงวันที่เปิดให้แทงล่วงหน้า (และไม่ใช่วันที่หวยออก) ให้ "เปิดรับแทงตลอด 24 ชม."
+          if (diffDays > 0 && diffDays <= preOpenDays) {
+            isWithinPreOpenRange = true;
+            break;
+          }
+        }
+
+        return isWithinPreOpenRange;
+      } else {
+        // --- เคสปกติ (หวยรายวัน ที่ไม่มี specificDates) ---
+        if (!(data['playDays'] ?? []).contains(now.weekday)) return false;
+        return now.isAfter(openTimeToday) && now.isBefore(closeTimeToday);
+      }
     } catch (e) {
       return false;
     }

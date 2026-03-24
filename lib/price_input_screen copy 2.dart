@@ -2,12 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// ✅ Theme Colors
 const Color kMainGreen = Color(0xFF11998E);
 const Color kLightGreen = Color(0xFF38EF7D);
 const Color kDeepBlue = Color(0xFF1A3D5D);
 
 class PriceInputScreen extends StatefulWidget {
-  // รับข้อมูลรายการแทงที่ประกอบด้วย num, cat, lottoKey, lottoTitle
+  // ✅ รับรายการแทงที่รวมข้อมูล lottoKey และ lottoTitle มาแล้ว
   final List<Map<String, String>> draftBets;
 
   const PriceInputScreen({super.key, required this.draftBets});
@@ -27,12 +28,13 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   int _countPerNum = 5000;
   int _payPercent = 10;
 
-  // ✅ เก็บราคาจ่ายแยกตาม lottoKey
+  // ✅ เก็บราคาจ่ายพื้นฐานแยกตาม lottoKey เพื่อรองรับการแทงหลายหวยพร้อมกัน
   Map<String, Map<String, double>> _allBasePayRates = {};
 
   @override
   void initState() {
     super.initState();
+    // สร้าง Controller สำหรับแต่ละแถว
     for (int i = 0; i < widget.draftBets.length; i++) {
       priceControllers[i] = TextEditingController();
     }
@@ -48,21 +50,20 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     super.dispose();
   }
 
-  // ✅ แก้ไขการดึงข้อมูลราคาจ่ายแบบ Multiple
   Future<void> _loadInitialData() async {
     try {
+      // 1. ดึงข้อมูล User และ Config กลาง
       final userDoc = await _db.collection('users').doc(_user?.uid).get();
       final payrateDoc = await _db.collection('configs').doc('payrate').get();
 
-      // ดึง lottoKey ทั้งหมดที่ถูกส่งมาในตะกร้า
+      // 2. ดึงรายการ lottoKey ทั้งหมดที่เลือกมาแทงในรอบนี้
       Set<String?> selectedKeys = widget.draftBets
           .map((e) => e['lottoKey'])
           .toSet();
 
+      // 3. โหลดราคาจ่ายจาก configs > lottogen > lottogrid ของทุกล็อตเตอรี่
       for (String? key in selectedKeys) {
         if (key == null) continue;
-
-        // ดึงจาก configs > lottogen > lottogrid
         final lottoSnap = await _db
             .collection('configs')
             .doc('lottogen')
@@ -80,9 +81,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             'digit1': (lData['digit1'] ?? 0).toDouble(),
             'swift': (lData['swift'] ?? 0).toDouble(),
           };
-          // debugPrint("โหลดราคาสำเร็จสำหรับ: $key -> ${_allBasePayRates[key]}");
-        } else {
-          debugPrint("⚠️ ไม่พบข้อมูลหวยสำหรับคีย์: $key ในฐานข้อมูล");
         }
       }
 
@@ -100,7 +98,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     }
   }
 
-  // ✅ คำนวณราคาจ่าย (อ้างอิงจาก Map ที่โหลดมา)
+  // ✅ คำนวณราคาจ่ายแยกตามประเภทหวยและหมวดหมู่
   int _calculateCurrentRate(
     int index,
     double inputAmount,
@@ -122,13 +120,9 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     else if (cat.contains("วิ่ง"))
       fieldKey = "digit1";
 
-    // ดึงราคาจ่ายพื้นฐาน
     double baseRate = _allBasePayRates[lKey]?[fieldKey] ?? 0;
-
-    // หาก baseRate เป็น 0 จะแสดง "ปิดรับ"
     if (baseRate <= 0) return 0;
 
-    // คำนวณลดราคาตามยอดแทงสะสม (Step)
     double totalAmount = totalAlreadyBet + inputAmount;
     int steps = totalAmount > 0
         ? ((totalAmount - 0.01) / _countPerNum).floor()
@@ -161,7 +155,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.red,
-          content: Text("ยอดเงินไม่พอ"),
+          content: Text("ยอดเงินไม่เพียงพอ"),
         ),
       );
       return;
@@ -201,11 +195,10 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       });
       await batch.commit();
 
-      Navigator.pop(context);
+      Navigator.pop(context); // ปิด Loading
       _showSuccessAndExit();
     } catch (e) {
       Navigator.pop(context);
-      debugPrint("Submit Error: $e");
     }
   }
 
@@ -218,8 +211,8 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         actions: [
           TextButton(
             onPressed: () {
+              // ย้อนกลับไปหน้าเลือกประเภทหวย
               Navigator.pop(ctx);
-              Navigator.pop(context);
               Navigator.pop(context);
               Navigator.pop(context);
             },
@@ -269,7 +262,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           const Expanded(
             child: Text(
               "ใส่ราคาเท่ากันทั้งหมด:",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
           SizedBox(
@@ -313,10 +306,8 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             alreadyBet += (d.get('price') ?? 0).toDouble();
           }
         }
-
-        double currentInput =
-            double.tryParse(priceControllers[index]!.text) ?? 0;
-        int rate = _calculateCurrentRate(index, currentInput, alreadyBet);
+        double inputVal = double.tryParse(priceControllers[index]!.text) ?? 0;
+        int rate = _calculateCurrentRate(index, inputVal, alreadyBet);
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -337,7 +328,9 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                     ),
                   ),
                   Text(
-                    rate > 0 ? "ราคาจ่าย: x$rate" : "🔴 ปิดรับ",
+                    rate > 0
+                        ? "ราคาจ่าย: x$rate (${bet['lottoTitle']})"
+                        : "🔴 ปิดรับ",
                     style: TextStyle(
                       fontSize: 12,
                       color: rate > 0 ? Colors.grey[700] : Colors.red,
@@ -345,7 +338,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                     ),
                   ),
                   Text(
-                    "${bet['lottoTitle']} | ${bet['cat']}",
+                    "[ ${bet['cat']} ]",
                     style: const TextStyle(fontSize: 10, color: Colors.grey),
                   ),
                 ],
@@ -358,7 +351,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                   controller: priceControllers[index],
                   keyboardType: TextInputType.number,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
                   decoration: const InputDecoration(hintText: "0"),
                   onChanged: (v) => setState(() {}),
                 ),
