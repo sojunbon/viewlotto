@@ -7,9 +7,7 @@ const Color kLightGreen = Color(0xFF38EF7D);
 const Color kDeepBlue = Color(0xFF1A3D5D);
 
 class PriceInputScreen extends StatefulWidget {
-  // รับข้อมูลรายการแทงที่ประกอบด้วย num, cat, lottoKey, lottoTitle
   final List<Map<String, String>> draftBets;
-
   const PriceInputScreen({super.key, required this.draftBets});
 
   @override
@@ -27,8 +25,9 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   int _countPerNum = 5000;
   int _payPercent = 10;
 
-  // ✅ เก็บราคาจ่ายแยกตาม lottoKey
+  // ✅ เก็บราคาจ่ายแยกตาม lottoKey (เช่น 'thai')
   Map<String, Map<String, double>> _allBasePayRates = {};
+  bool _isLoadingRates = true;
 
   @override
   void initState() {
@@ -48,13 +47,12 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     super.dispose();
   }
 
-  // ✅ แก้ไขการดึงข้อมูลราคาจ่ายแบบ Multiple
   Future<void> _loadInitialData() async {
     try {
       final userDoc = await _db.collection('users').doc(_user?.uid).get();
       final payrateDoc = await _db.collection('configs').doc('payrate').get();
 
-      // ดึง lottoKey ทั้งหมดที่ถูกส่งมาในตะกร้า
+      // ดึง lottoKey ทั้งหมดจากรายการแทง (เช่น 'thai')
       Set<String?> selectedKeys = widget.draftBets
           .map((e) => e['lottoKey'])
           .toSet();
@@ -62,27 +60,25 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       for (String? key in selectedKeys) {
         if (key == null) continue;
 
-        // ดึงจาก configs > lottogen > lottogrid
+        // Query หาเอกสารที่มี lottotype ตรงกัน
         final lottoSnap = await _db
             .collection('configs')
             .doc('lottogen')
             .collection('lottogrid')
             .where('lottotype', isEqualTo: key)
-            .limit(1)
             .get();
 
         if (lottoSnap.docs.isNotEmpty) {
           var lData = lottoSnap.docs.first.data();
-          _allBasePayRates[key] = {
-            'digit4': (lData['digit4'] ?? 0).toDouble(),
-            'digit3': (lData['digit3'] ?? 0).toDouble(),
-            'digit2': (lData['digit2'] ?? 0).toDouble(),
-            'digit1': (lData['digit1'] ?? 0).toDouble(),
-            'swift': (lData['swift'] ?? 0).toDouble(),
-          };
-          // debugPrint("โหลดราคาสำเร็จสำหรับ: $key -> ${_allBasePayRates[key]}");
-        } else {
-          debugPrint("⚠️ ไม่พบข้อมูลหวยสำหรับคีย์: $key ในฐานข้อมูล");
+          setState(() {
+            _allBasePayRates[key] = {
+              'digit4': (lData['digit4'] ?? 0).toDouble(),
+              'digit3': (lData['digit3'] ?? 0).toDouble(),
+              'digit2': (lData['digit2'] ?? 0).toDouble(),
+              'digit1': (lData['digit1'] ?? 0).toDouble(),
+              'swift': (lData['swift'] ?? 0).toDouble(),
+            };
+          });
         }
       }
 
@@ -93,6 +89,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             _countPerNum = (payrateDoc.data()?['countpernum'] ?? 5000).toInt();
             _payPercent = (payrateDoc.data()?['pay_percent'] ?? 10).toInt();
           }
+          _isLoadingRates = false; // ✅ โหลดเสร็จแล้ว
         });
       }
     } catch (e) {
@@ -100,7 +97,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     }
   }
 
-  // ✅ คำนวณราคาจ่าย (อ้างอิงจาก Map ที่โหลดมา)
+  /*
   int _calculateCurrentRate(
     int index,
     double inputAmount,
@@ -113,7 +110,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     String fieldKey = "";
     if (cat.contains("4 ตัว"))
       fieldKey = "digit4";
-    else if (cat.contains("3 ตัวตรง") || cat.contains("3 ตัวบน"))
+    else if (cat.contains("3 ตัวบน") || cat.contains("3 ตัวตรง"))
       fieldKey = "digit3";
     else if (cat.contains("3 ตัวโต๊ด"))
       fieldKey = "swift";
@@ -122,112 +119,128 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     else if (cat.contains("วิ่ง"))
       fieldKey = "digit1";
 
-    // ดึงราคาจ่ายพื้นฐาน
+    // ✅ ตรวจสอบว่ามีข้อมูลใน Map หรือไม่
+    if (!_allBasePayRates.containsKey(lKey))
+      return -1; // ส่ง -1 เพื่อบอกว่ายังไม่มีข้อมูล
+
     double baseRate = _allBasePayRates[lKey]?[fieldKey] ?? 0;
+    if (baseRate <= 0) return 0; // ปิดรับจริงๆ
 
-    // หาก baseRate เป็น 0 จะแสดง "ปิดรับ"
-    if (baseRate <= 0) return 0;
-
-    // คำนวณลดราคาตามยอดแทงสะสม (Step)
     double totalAmount = totalAlreadyBet + inputAmount;
     int steps = totalAmount > 0
         ? ((totalAmount - 0.01) / _countPerNum).floor()
         : 0;
-    double discount = (steps * _payPercent) / 100;
-    double finalRate = baseRate * (1 - discount);
+    double finalRate = baseRate * (1 - (steps * _payPercent / 100));
 
-    return finalRate <= 0 ? 0 : finalRate.round();
+    return finalRate.round();
   }
+  
 
-  void _setAllPrices(String value) {
-    setState(() {
-      for (var c in priceControllers.values) {
-        c.text = value;
+  int _calculateCurrentRate(
+    int index,
+    double inputAmount,
+    double totalAlreadyBet,
+  ) {
+    var bet = widget.draftBets[index];
+    String cat = bet['cat'] ?? "";
+    String? lKey = bet['lottoKey'];
+
+    String fieldKey = "";
+    if (cat.contains("4 ตัว"))
+      fieldKey = "digit4";
+    else if (cat.contains("3 ตัวบน") || cat.contains("3 ตัวตรง"))
+      fieldKey = "digit3";
+    else if (cat.contains("3 ตัวโต๊ด"))
+      fieldKey = "swift";
+    else if (cat.contains("2 ตัว"))
+      fieldKey = "digit2";
+    else if (cat.contains("วิ่ง"))
+      fieldKey = "digit1";
+
+    // ✅ เพิ่ม LOG ตรงนี้เพื่อเช็คค่า
+    // debugPrint("DEBUG: Checking index $index | Key: $lKey | Field: $fieldKey");
+
+    // 1. เช็คว่า Map มีข้อมูลของหวยตัวนี้หรือยัง
+    if (!_allBasePayRates.containsKey(lKey)) {
+      return -1; // ถ้ายังไม่มี ต้องขึ้น "กำลังคำนวณ..."
+    }
+    
+    // 2. ดึงราคาจ่ายพื้นฐาน
+    double baseRate = _allBasePayRates[lKey]?[fieldKey] ?? 0;
+
+    // ✅ ถ้า baseRate เป็น 0 ให้ลองเช็คว่าใน Map มันมีค่าอะไรอยู่บ้าง
+    if (baseRate <= 0) {
+      debugPrint("⚠️ ข้อมูลใน Map สำหรับ $lKey: ${_allBasePayRates[lKey]}");
+      return 0; // ถ้าตรงนี้คืน 0 มันจะขึ้น "ปิดรับ"
+    }
+
+    double totalAmount = totalAlreadyBet + inputAmount;
+    int steps = totalAmount > 0
+        ? ((totalAmount - 0.01) / _countPerNum).floor()
+        : 0;
+    double finalRate = baseRate * (1 - (steps * _payPercent / 100));
+
+    return finalRate.round();
+  }
+  */
+
+  int _calculateCurrentRate(
+    int index,
+    double inputAmount,
+    double totalAlreadyBet,
+  ) {
+    var bet = widget.draftBets[index];
+
+    // ✅ 1. ล้างช่องว่างให้เกลี้ยง
+    String rawCat = (bet['cat'] ?? "").toString();
+    String cleanCat = rawCat.replaceAll(RegExp(r'\s+'), "");
+    String? lKey = bet['lottoKey'];
+
+    String fieldKey = "";
+
+    // ✅ 2. Mapping ใหม่ (เน้นคำสำคัญที่ส่งมาจาก NumberInputScreen)
+    if (cleanCat.contains("สี่ตัว") || cleanCat.contains("4ตัว")) {
+      fieldKey = "digit4";
+    } else if (cleanCat.contains("สามตัว") || cleanCat.contains("3ตัว")) {
+      // แยก "ตรง/บน" กับ "โต๊ด"
+      if (cleanCat.contains("โต๊ด")) {
+        fieldKey = "swift";
+      } else {
+        fieldKey = "digit3";
       }
-    });
-  }
-
-  double _calculateTotal() {
-    double total = 0;
-    for (var c in priceControllers.values) {
-      total += double.tryParse(c.text) ?? 0;
+    } else if (cleanCat.contains("สองตัว") || cleanCat.contains("2ตัว")) {
+      fieldKey = "digit2";
+    } else if (cleanCat.contains("วิ่ง")) {
+      fieldKey = "digit1";
     }
-    return total;
-  }
 
-  Future<void> _submitFinalBets() async {
-    double totalAmount = _calculateTotal();
-    if (totalAmount > _userCredit) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Colors.red,
-          content: Text("ยอดเงินไม่พอ"),
-        ),
-      );
-      return;
+    // 🛠 DEBUG LOGS (ต้องเห็น fieldKey ไม่ว่างแล้ว!)
+    debugPrint("------------------------------------------");
+    debugPrint("🎯 INDEX: $index");
+    debugPrint("📥 ค่าที่รับมา: '$rawCat'");
+    debugPrint("🔑 คีย์ที่แมพได้: '$fieldKey'");
+
+    // ✅ 3. เช็ค Map ข้อมูลจาก Firebase
+    if (!_allBasePayRates.containsKey(lKey)) {
+      return -1; // รอโหลด
     }
-    if (totalAmount <= 0) return;
 
-    try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) =>
-            const Center(child: CircularProgressIndicator(color: kMainGreen)),
-      );
-      WriteBatch batch = _db.batch();
+    // ✅ 4. ดึงราคาจ่ายจริง
+    var rawRate = _allBasePayRates[lKey]?[fieldKey];
+    double baseRate = double.tryParse(rawRate.toString()) ?? 0;
 
-      for (int i = 0; i < widget.draftBets.length; i++) {
-        double price = double.tryParse(priceControllers[i]!.text) ?? 0;
-        if (price <= 0) continue;
+    debugPrint("💰 ราคาจ่ายจาก Map: $baseRate");
+    debugPrint("------------------------------------------");
 
-        var bet = widget.draftBets[i];
-        DocumentReference ref = _db.collection('bets').doc();
-        batch.set(ref, {
-          'uid': _user?.uid,
-          'email': _user?.email,
-          'lotto_type': bet['lottoTitle'],
-          'lotto_key': bet['lottoKey'],
-          'category': bet['cat'],
-          'number': bet['num'],
-          'price': price,
-          'status': 'pending',
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-      }
+    if (baseRate <= 0) return 0;
 
-      batch.update(_db.collection('users').doc(_user!.uid), {
-        'credit': FieldValue.increment(-totalAmount),
-      });
-      await batch.commit();
+    double totalAmount = totalAlreadyBet + inputAmount;
+    int steps = totalAmount > 0
+        ? ((totalAmount - 0.01) / _countPerNum).floor()
+        : 0;
+    double finalRate = baseRate * (1 - (steps * _payPercent / 100));
 
-      Navigator.pop(context);
-      _showSuccessAndExit();
-    } catch (e) {
-      Navigator.pop(context);
-      debugPrint("Submit Error: $e");
-    }
-  }
-
-  void _showSuccessAndExit() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("สำเร็จ"),
-        content: const Text("ส่งโพยเรียบร้อยแล้ว"),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pop(context);
-              Navigator.pop(context);
-              Navigator.pop(context);
-            },
-            child: const Text("ตกลง", style: TextStyle(color: kMainGreen)),
-          ),
-        ],
-      ),
-    );
+    return finalRate.round();
   }
 
   @override
@@ -286,7 +299,13 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              onChanged: _setAllPrices,
+              onChanged: (v) {
+                setState(() {
+                  for (var c in priceControllers.values) {
+                    c.text = v;
+                  }
+                });
+              },
             ),
           ),
           const SizedBox(width: 10),
@@ -336,11 +355,16 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                       color: Colors.orange,
                     ),
                   ),
+                  // ✅ ตรวจสอบสถานะการโหลดราคา
                   Text(
-                    rate > 0 ? "ราคาจ่าย: x$rate" : "🔴 ปิดรับ",
+                    rate == -1
+                        ? "กำลังโหลดราคา..."
+                        : (rate > 0 ? "ราคาจ่าย: x$rate" : "🔴 ปิดรับ"),
                     style: TextStyle(
                       fontSize: 12,
-                      color: rate > 0 ? Colors.grey[700] : Colors.red,
+                      color: rate == -1
+                          ? Colors.blue
+                          : (rate > 0 ? Colors.black87 : Colors.red),
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -358,7 +382,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                   controller: priceControllers[index],
                   keyboardType: TextInputType.number,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
                   decoration: const InputDecoration(hintText: "0"),
                   onChanged: (v) => setState(() {}),
                 ),
@@ -373,6 +396,10 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   }
 
   Widget _buildSummaryFooter() {
+    double total = 0;
+    priceControllers.values.forEach((c) {
+      total += double.tryParse(c.text) ?? 0;
+    });
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -392,7 +419,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             children: [
               const Text("รวมทั้งหมด:", style: TextStyle(fontSize: 16)),
               Text(
-                "${_calculateTotal().toStringAsFixed(0)} บาท",
+                "${total.toStringAsFixed(0)} บาท",
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -423,6 +450,82 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submitFinalBets() async {
+    double totalAmount = 0;
+    priceControllers.values.forEach((c) {
+      totalAmount += double.tryParse(c.text) ?? 0;
+    });
+
+    if (totalAmount > _userCredit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.red,
+          content: Text("ยอดเงินไม่พอ"),
+        ),
+      );
+      return;
+    }
+    if (totalAmount <= 0) return;
+
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) =>
+            const Center(child: CircularProgressIndicator(color: kMainGreen)),
+      );
+      WriteBatch batch = _db.batch();
+
+      for (int i = 0; i < widget.draftBets.length; i++) {
+        double price = double.tryParse(priceControllers[i]!.text) ?? 0;
+        if (price <= 0) continue;
+        var bet = widget.draftBets[i];
+        DocumentReference ref = _db.collection('bets').doc();
+        batch.set(ref, {
+          'uid': _user?.uid,
+          'email': _user?.email,
+          'lotto_type': bet['lottoTitle'],
+          'lotto_key': bet['lottoKey'],
+          'category': bet['cat'],
+          'number': bet['num'],
+          'price': price,
+          'status': 'pending',
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
+
+      batch.update(_db.collection('users').doc(_user!.uid), {
+        'credit': FieldValue.increment(-totalAmount),
+      });
+      await batch.commit();
+
+      Navigator.pop(context); // ปิด loading
+      _showSuccessAndExit();
+    } catch (e) {
+      Navigator.pop(context);
+    }
+  }
+
+  void _showSuccessAndExit() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("สำเร็จ"),
+        content: const Text("ส่งโพยเรียบร้อยแล้ว"),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
+            },
+            child: const Text("ตกลง", style: TextStyle(color: kMainGreen)),
           ),
         ],
       ),

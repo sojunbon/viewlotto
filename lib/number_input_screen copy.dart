@@ -19,14 +19,14 @@ class NumberInputScreen extends StatefulWidget {
 }
 
 class _NumberInputScreenState extends State<NumberInputScreen> {
-  // ✅ ใช้ Set เพื่อให้เลือกได้หลายประเภทพร้อมกันแบบอิสระ (Toggle)
+  // ✅ เปลี่ยนมาใช้ Set เพื่อให้เลือกได้หลายประเภทพร้อมกัน (อิสระ)
   Set<String> selectedCategories = {"สามตัวบน"};
   String currentNumber = "";
   List<Map<String, String>> draftBets = [];
   bool canPlay4Digits = false;
   bool isReverseMode = false;
 
-  // ✅ Getter สำหรับดึงข้อมูลหวยใบแรก
+  // ✅ Getter สำหรับดึงข้อมูลหวยใบแรกมาใช้เป็นหลักในการดึงราคา/แสดงหัวข้อ
   String get lottoTitle =>
       (widget.lottoList != null && widget.lottoList!.isNotEmpty)
       ? widget.lottoList!.first['lottoname'] ?? "แทงหวย"
@@ -58,22 +58,21 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     }
   }
 
-  // ✅ ฟังก์ชันสลับการเลือกประเภท (Toggle อิสระตามที่คุณต้องการ)
+  // ✅ ฟังก์ชันสลับการเลือกประเภท (Toggle)
   void _onCategoryTap(String name) {
     setState(() {
       if (selectedCategories.contains(name)) {
-        // ถ้ามีอยู่แล้วให้เอาออก (ยกเว้นเหลืออันเดียว ไม่ให้เอาออกหมดเพื่อให้ระบบยังรู้ว่าต้องพิมพ์กี่หลัก)
         if (selectedCategories.length > 1) {
           selectedCategories.remove(name);
         }
       } else {
-        // ถ้ายังไม่มีให้เพิ่มเข้าไปใน Set (เลือกพร้อมกันหลายอันได้)
         selectedCategories.add(name);
       }
       currentNumber = ""; // ล้างตัวเลขที่พิมพ์ค้างไว้เมื่อเปลี่ยนโหมด
     });
   }
 
+  // ✅ จัดกลุ่มเพื่อแสดงผลใน Sidebar
   Map<String, List<Map<String, dynamic>>> _getGroupedBets() {
     Map<String, List<Map<String, dynamic>>> groups = {};
     for (int i = 0; i < draftBets.length; i++) {
@@ -97,7 +96,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
         if (currentNumber.length < max) {
           currentNumber += value;
           if (currentNumber.length == max) {
-            // ✅ เพิ่มเลขเข้าทุกหมวดหมู่ที่ถูกเลือก (Selected) ไว้พร้อมกัน
+            // ✅ เพิ่มเลขเข้าทุกหมวดหมู่ที่เลือกไว้พร้อมกัน
             for (var cat in selectedCategories) {
               if (isReverseMode && currentNumber.length >= 2) {
                 _processReverseAndAddForCat(cat);
@@ -136,7 +135,6 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     }
   }
 
-  // ✅ ปรับความยาวตามประเภทหวยที่ "ยาวที่สุด" ในกลุ่มที่เลือกไว้
   int _getMaxLength() {
     if (selectedCategories.any((c) => c.contains("สี่"))) return 4;
     if (selectedCategories.any((c) => c.contains("สาม"))) return 3;
@@ -298,7 +296,6 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     );
   }
 
-  // ✅ ฟังก์ชัน UI อื่นๆ (Sidebar, Keypad, Submit) คงเดิมตามชุดของคุณ
   Widget _buildTopActions() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -573,6 +570,8 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
       child: InkWell(
         onTap: () {
           if (draftBets.isEmpty) return;
+
+          // ✅ สร้างลิสต์รายการแทงที่ระบุ lottoKey และ lottoTitle ของหวยแต่ละใบ
           List<Map<String, String>> finalBets = draftBets.map((bet) {
             return {
               "num": bet["num"]!,
