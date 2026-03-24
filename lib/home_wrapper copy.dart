@@ -315,14 +315,13 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
                 child: Opacity(
                   opacity: isOpen ? 1.0 : 0.6,
                   child: InkWell(
-                    // ✅ แก้ไขส่วน onTap ใน HomeWrapper.dart
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => NumberInputScreen(
-                            // ส่งเป็น List ที่มี Map 1 ตัว เพื่อให้เข้ากับ Constructor ใหม่
-                            lottoList: [data],
+                            lottoTitle: data['lottoname'],
+                            lottoKey: data['lottotype'],
                           ),
                         ),
                       );

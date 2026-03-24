@@ -3,39 +3,31 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 import 'price_input_screen.dart';
 
-// ✅ Theme Colors
+// ✅ Theme Green Liquid & Deep Blue Sidebar
 const Color kMainGreen = Color(0xFF11998E);
 const Color kLightGreen = Color(0xFF38EF7D);
 const Color kDeepBlue = Color(0xFF1A3D5D);
 
 class NumberInputScreen extends StatefulWidget {
-  // ✅ รับค่าแบบ List จากหน้า HomeWrapper
-  final List<Map<String, dynamic>>? lottoList;
+  final String lottoTitle;
+  final String lottoKey; // เช่น 'thai', 'lao', 'hanoy'
 
-  const NumberInputScreen({super.key, this.lottoList});
+  const NumberInputScreen({
+    super.key,
+    required this.lottoTitle,
+    required this.lottoKey,
+  });
 
   @override
   State<NumberInputScreen> createState() => _NumberInputScreenState();
 }
 
 class _NumberInputScreenState extends State<NumberInputScreen> {
-  // ✅ เปลี่ยนมาใช้ Set เพื่อให้เลือกได้หลายประเภทพร้อมกัน (อิสระ)
-  Set<String> selectedCategories = {"สามตัวบน"};
+  String selectedCategory = "สามตัวบน";
   String currentNumber = "";
   List<Map<String, String>> draftBets = [];
   bool canPlay4Digits = false;
   bool isReverseMode = false;
-
-  // ✅ Getter สำหรับดึงข้อมูลหวยใบแรกมาใช้เป็นหลักในการดึงราคา/แสดงหัวข้อ
-  String get lottoTitle =>
-      (widget.lottoList != null && widget.lottoList!.isNotEmpty)
-      ? widget.lottoList!.first['lottoname'] ?? "แทงหวย"
-      : "แทงหวย";
-
-  String get lottoKey =>
-      (widget.lottoList != null && widget.lottoList!.isNotEmpty)
-      ? widget.lottoList!.first['lottotype'] ?? "thai"
-      : "thai";
 
   @override
   void initState() {
@@ -43,6 +35,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     _check4DigitConfig();
   }
 
+  // ดึงสิทธิ์การแทง 4 ตัวจากอาเรย์ใน configs/setnum4
   Future<void> _check4DigitConfig() async {
     try {
       DocumentSnapshot snap = await FirebaseFirestore.instance
@@ -51,28 +44,13 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
           .get();
       if (snap.exists) {
         List<dynamic> allowedList = snap.get('lottotype') ?? [];
-        setState(() => canPlay4Digits = allowedList.contains(lottoKey));
+        setState(() => canPlay4Digits = allowedList.contains(widget.lottoKey));
       }
     } catch (e) {
-      debugPrint("Config Error: $e");
+      debugPrint(e.toString());
     }
   }
 
-  // ✅ ฟังก์ชันสลับการเลือกประเภท (Toggle)
-  void _onCategoryTap(String name) {
-    setState(() {
-      if (selectedCategories.contains(name)) {
-        if (selectedCategories.length > 1) {
-          selectedCategories.remove(name);
-        }
-      } else {
-        selectedCategories.add(name);
-      }
-      currentNumber = ""; // ล้างตัวเลขที่พิมพ์ค้างไว้เมื่อเปลี่ยนโหมด
-    });
-  }
-
-  // ✅ จัดกลุ่มเพื่อแสดงผลใน Sidebar
   Map<String, List<Map<String, dynamic>>> _getGroupedBets() {
     Map<String, List<Map<String, dynamic>>> groups = {};
     for (int i = 0; i < draftBets.length; i++) {
@@ -96,13 +74,13 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
         if (currentNumber.length < max) {
           currentNumber += value;
           if (currentNumber.length == max) {
-            // ✅ เพิ่มเลขเข้าทุกหมวดหมู่ที่เลือกไว้พร้อมกัน
-            for (var cat in selectedCategories) {
-              if (isReverseMode && currentNumber.length >= 2) {
-                _processReverseAndAddForCat(cat);
-              } else {
-                draftBets.insert(0, {"num": currentNumber, "cat": cat});
-              }
+            if (isReverseMode && currentNumber.length >= 2) {
+              _processReverseAndAdd();
+            } else {
+              draftBets.insert(0, {
+                "num": currentNumber,
+                "cat": selectedCategory,
+              });
             }
             currentNumber = "";
           }
@@ -111,7 +89,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     });
   }
 
-  void _processReverseAndAddForCat(String cat) {
+  void _processReverseAndAdd() {
     Set<String> results = {};
     void permute(List<String> chars, int index) {
       if (index == chars.length - 1) {
@@ -131,15 +109,13 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
 
     permute(currentNumber.split(''), 0);
     for (var n in results) {
-      draftBets.insert(0, {"num": n, "cat": cat});
+      draftBets.insert(0, {"num": n, "cat": selectedCategory});
     }
   }
 
-  int _getMaxLength() {
-    if (selectedCategories.any((c) => c.contains("สี่"))) return 4;
-    if (selectedCategories.any((c) => c.contains("สาม"))) return 3;
-    return 2;
-  }
+  int _getMaxLength() => selectedCategory.contains("สี่")
+      ? 4
+      : (selectedCategory.contains("สาม") ? 3 : 2);
 
   void _generateRandom() {
     int max = _getMaxLength();
@@ -149,12 +125,10 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     }
     setState(() {
       currentNumber = res;
-      for (var cat in selectedCategories) {
-        if (isReverseMode) {
-          _processReverseAndAddForCat(cat);
-        } else {
-          draftBets.insert(0, {"num": currentNumber, "cat": cat});
-        }
+      if (isReverseMode) {
+        _processReverseAndAdd();
+      } else {
+        draftBets.insert(0, {"num": currentNumber, "cat": selectedCategory});
       }
       currentNumber = "";
     });
@@ -166,7 +140,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
-          lottoTitle,
+          widget.lottoTitle,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 15,
@@ -180,7 +154,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
       ),
       body: Column(
         children: [
-          _buildCategoryGridStream(),
+          _buildCategoryGridStream(), // ✅ เปลี่ยนมาใช้แบบ Stream ดึงราคาจากระบบ
           _buildTopActions(),
           Expanded(
             child: Row(
@@ -203,16 +177,18 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     );
   }
 
+  // ✅ ฟังชันใหม่: ดึงราคาจาก Firestore (configs/lottogen/lottogrid/...)
   Widget _buildCategoryGridStream() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('configs')
           .doc('lottogen')
           .collection('lottogrid')
-          .where('lottotype', isEqualTo: lottoKey)
+          .where('lottotype', isEqualTo: widget.lottoKey)
           .limit(1)
           .snapshots(),
       builder: (context, snapshot) {
+        // ค่าเริ่มต้นกรณีรอโหลดหรือหาไม่เจอ
         Map<String, dynamic> data = {
           'digit4': '8000',
           'digit3': '920',
@@ -220,6 +196,7 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
           'digit2': '92',
           'digit1': '3.2',
         };
+
         if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
           data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
         }
@@ -236,28 +213,30 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
         ];
 
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
           child: Wrap(
             spacing: 4,
             runSpacing: 4,
             children: categories.map((cat) {
-              bool isSelected = selectedCategories.contains(cat['name']);
+              bool isSelected = selectedCategory == cat['name'];
               return InkWell(
-                onTap: () => _onCategoryTap(cat['name']!),
+                onTap: () => setState(() {
+                  selectedCategory = cat['name']!;
+                  currentNumber = "";
+                }),
                 child: Container(
                   width: (MediaQuery.of(context).size.width / 2) - 8,
                   padding: const EdgeInsets.symmetric(
-                    vertical: 6,
-                    horizontal: 10,
+                    vertical: 4,
+                    horizontal: 8,
                   ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: isSelected ? kMainGreen : Colors.black12,
-                      width: 1.5,
                     ),
                     color: isSelected
-                        ? kMainGreen.withOpacity(0.1)
+                        ? kMainGreen.withOpacity(0.08)
                         : Colors.white,
                   ),
                   child: Row(
@@ -267,24 +246,17 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
                         cat['name']!,
                         style: TextStyle(
                           color: isSelected ? kMainGreen : Colors.black87,
-                          fontSize: 11,
+                          fontSize: 10,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      if (isSelected)
-                        const Icon(
-                          Icons.check_circle,
-                          size: 14,
-                          color: kMainGreen,
+                      Text(
+                        cat['pay']!,
+                        style: TextStyle(
+                          color: isSelected ? kMainGreen : Colors.black45,
+                          fontSize: 9,
                         ),
-                      if (!isSelected)
-                        Text(
-                          cat['pay']!,
-                          style: const TextStyle(
-                            color: Colors.black45,
-                            fontSize: 10,
-                          ),
-                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -570,21 +542,14 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
       child: InkWell(
         onTap: () {
           if (draftBets.isEmpty) return;
-
-          // ✅ สร้างลิสต์รายการแทงที่ระบุ lottoKey และ lottoTitle ของหวยแต่ละใบ
-          List<Map<String, String>> finalBets = draftBets.map((bet) {
-            return {
-              "num": bet["num"]!,
-              "cat": bet["cat"]!,
-              "lottoKey": lottoKey,
-              "lottoTitle": lottoTitle,
-            };
-          }).toList();
-
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => PriceInputScreen(draftBets: finalBets),
+              builder: (context) => PriceInputScreen(
+                draftBets: draftBets,
+                lottoTitle: widget.lottoTitle,
+                lottoKey: widget.lottoKey,
+              ),
             ),
           );
         },
