@@ -11,13 +11,11 @@ class AdminLottoConfig extends StatefulWidget {
   State<AdminLottoConfig> createState() => _AdminLottoConfigState();
 }
 
-// หน้าจอสำหรับจัดการข้อมูลหวยและราคาจ่าย
 class _AdminLottoConfigState extends State<AdminLottoConfig> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final ImagePicker _picker = ImagePicker();
 
-  // ตัวเลือกวันในสัปดาห์สำหรับ UI
   final List<String> _daysOfWeek = ["จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส.", "อา."];
 
   Future<void> _uploadImage(TextEditingController controller) async {
@@ -28,9 +26,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
         maxHeight: 1024,
         imageQuality: 40,
       );
-
       if (image == null) return;
-
       if (!mounted) return;
       showDialog(
         context: context,
@@ -39,16 +35,13 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
           child: CircularProgressIndicator(color: Color(0xFF11998E)),
         ),
       );
-
       File file = File(image.path);
       String fileName =
           'lotto_flags/${DateTime.now().millisecondsSinceEpoch}.png';
       Reference storageRef = _storage.ref().child(fileName);
-
       UploadTask uploadTask = storageRef.putFile(file);
       TaskSnapshot snapshot = await uploadTask;
       String downloadUrl = await snapshot.ref.getDownloadURL();
-
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
         setState(() {
@@ -92,9 +85,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
             return const Center(child: CircularProgressIndicator());
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
             return const Center(child: Text("ยังไม่มีรายการหวย"));
-
           final docs = snapshot.data!.docs;
-
           return ListView.builder(
             itemCount: docs.length,
             padding: const EdgeInsets.all(12),
@@ -102,7 +93,6 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
               final data = docs[index].data() as Map<String, dynamic>;
               final docId = docs[index].id;
               bool isLottoActive = data['lottostatus'] ?? true;
-
               return Card(
                 elevation: 3,
                 margin: const EdgeInsets.only(bottom: 12),
@@ -202,12 +192,11 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
     TextEditingController specificDatesController = TextEditingController(
       text: data['specificDates'] ?? "",
     );
-
-    // ✅ เพิ่ม Controller สำหรับวันเปิดล่วงหน้า
     TextEditingController preOpenDaysController = TextEditingController(
       text: (data['preOpenDays'] ?? "0").toString(),
     );
 
+    // ราคาจ่าย
     TextEditingController d4 = TextEditingController(
       text: (data['digit4'] ?? "8000").toString(),
     );
@@ -222,6 +211,20 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
     );
     TextEditingController swiftController = TextEditingController(
       text: (data['swift'] ?? "150").toString(),
+    );
+
+    // ✅ เพิ่ม Controller สำหรับยอดแทงสูงสุด (Max Bet)
+    TextEditingController m4 = TextEditingController(
+      text: (data['maxdigit4'] ?? "100").toString(),
+    );
+    TextEditingController m3 = TextEditingController(
+      text: (data['maxdigit3'] ?? "200").toString(),
+    );
+    TextEditingController m2 = TextEditingController(
+      text: (data['maxdigit2'] ?? "300").toString(),
+    );
+    TextEditingController m1 = TextEditingController(
+      text: (data['maxdigit1'] ?? "300").toString(),
     );
 
     List<int> selectedDays = List<int>.from(
@@ -267,7 +270,6 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                     typeController,
                     hint: "เช่น thai, lao, hanoy",
                   ),
-
                   Row(
                     children: [
                       Expanded(
@@ -287,13 +289,11 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                       ),
                     ],
                   ),
-
                   const Divider(),
                   const Text(
-                    "วันเปิดรับแทง (เลือกวันในสัปดาห์)",
+                    "วันเปิดรับแทง",
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
-                  const SizedBox(height: 5),
                   Wrap(
                     spacing: 4,
                     children: List.generate(7, (index) {
@@ -318,61 +318,45 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                       );
                     }),
                   ),
-                  const SizedBox(height: 10),
                   _buildTextField(
                     "ระบุวันที่เปิด (เช่น 1,16)",
                     specificDatesController,
                     hint: "เว้นว่างไว้หากใช้ จ-อา",
                   ),
-
-                  // ✅ ฟิลด์ใหม่: เปิดรับล่วงหน้า
                   _buildTextField(
-                    "เปิดรับล่วงหน้า (กี่วันก่อนหวยออก)",
+                    "เปิดรับล่วงหน้า (วัน)",
                     preOpenDaysController,
                     isNum: true,
-                    hint: "เช่น 5",
                   ),
-
                   const Divider(),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: TextField(
-                      controller: linkController,
-                      decoration: InputDecoration(
-                        labelText: "ลิงก์รูปธง (lottolink)",
-                        isDense: true,
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          icon: const Icon(
-                            Icons.camera_alt,
-                            color: Color(0xFF11998E),
-                          ),
-                          onPressed: () => _uploadImage(linkController),
-                        ),
+                  _buildTextField(
+                    "ลิงก์รูปธง",
+                    linkController,
+                    hint: "URL รูปภาพ",
+                    suffix: IconButton(
+                      icon: const Icon(
+                        Icons.camera_alt,
+                        color: Color(0xFF11998E),
                       ),
+                      onPressed: () => _uploadImage(linkController),
                     ),
                   ),
 
-                  Row(
-                    children: [
-                      Expanded(child: _buildPriceField("4 ตัวบน", d4)),
-                      const SizedBox(width: 10),
-                      Expanded(child: _buildPriceField("3 ตัวบน", d3)),
-                    ],
+                  const Text(
+                    "ตั้งค่าราคาจ่าย & ยอดแทงสูงสุด",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Color(0xFF1A3D5D),
+                    ),
                   ),
-                  Row(
-                    children: [
-                      Expanded(child: _buildPriceField("2 ตัวบน", d2)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _buildPriceField(
-                          "โต๊ด (swift)",
-                          swiftController,
-                        ),
-                      ),
-                    ],
-                  ),
-                  _buildPriceField("วิ่งบน", d1),
+                  const SizedBox(height: 10),
+                  // ✅ แสดง Row ราคาคู่กับ Max Bet
+                  _buildPriceMaxRow("4 ตัวบน", d4, m4),
+                  _buildPriceMaxRow("3 ตัวบน", d3, m3),
+                  _buildPriceMaxRow("2 ตัวบน", d2, m2),
+                  _buildPriceMaxRow("วิ่งบน", d1, m1),
+                  _buildPriceField("โต๊ด (swift)", swiftController),
                 ],
               ),
             ),
@@ -388,7 +372,6 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
               ),
               onPressed: () async {
                 if (nameController.text.isEmpty) return;
-
                 Map<String, dynamic> finalData = {
                   'number': int.tryParse(numController.text) ?? nextNumber,
                   'lottoname': nameController.text,
@@ -398,16 +381,19 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                   'closeTime': closeTimeController.text,
                   'playDays': selectedDays,
                   'specificDates': specificDatesController.text.trim(),
-                  // ✅ บันทึกค่าเปิดล่วงหน้า
                   'preOpenDays': int.tryParse(preOpenDaysController.text) ?? 0,
                   'digit4': int.tryParse(d4.text) ?? 0,
                   'digit3': int.tryParse(d3.text) ?? 0,
                   'digit2': int.tryParse(d2.text) ?? 0,
                   'digit1': double.tryParse(d1.text) ?? 0.0,
                   'swift': int.tryParse(swiftController.text) ?? 0,
+                  // ✅ บันทึกยอด Max Bet
+                  'maxdigit4': int.tryParse(m4.text) ?? 0,
+                  'maxdigit3': int.tryParse(m3.text) ?? 0,
+                  'maxdigit2': int.tryParse(m2.text) ?? 0,
+                  'maxdigit1': int.tryParse(m1.text) ?? 0,
                   'lottostatus': currentStatus,
                 };
-
                 final col = _db
                     .collection('configs')
                     .doc('lottogen')
@@ -428,11 +414,41 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
     );
   }
 
+  // ✅ เพิ่ม Widget ช่วยสร้างแถว ราคาจ่าย + ยอดสูงสุด
+  Widget _buildPriceMaxRow(
+    String label,
+    TextEditingController pCtrl,
+    TextEditingController mCtrl,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(flex: 2, child: _buildPriceField(label, pCtrl)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: mCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "Max (บ.)",
+                labelStyle: TextStyle(fontSize: 12, color: Colors.red),
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTextField(
     String label,
     TextEditingController controller, {
     String? hint,
     bool isNum = false,
+    Widget? suffix,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -442,6 +458,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
+          suffixIcon: suffix,
           isDense: true,
           border: const OutlineInputBorder(),
         ),
