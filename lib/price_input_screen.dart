@@ -12,6 +12,7 @@ class PriceInputScreen extends StatefulWidget {
   State<PriceInputScreen> createState() => _PriceInputScreenState();
 }
 
+// PriceInputScreen เป็นหน้าจอที่ให้ผู้ใช้ระบุราคาสำหรับแต่ละหมายเลขที่เลือกใน draftBets โดยจะคำนวณอัตราจ่ายแบบไดนามิกตามยอดเสี่ยงสะสมและส่วนลดของผู้ใช้ และส่งข้อมูลไปยัง Firebase เมื่อยืนยันการส่งโพย
 class _PriceInputScreenState extends State<PriceInputScreen> {
   final _db = FirebaseFirestore.instance;
   Map<int, TextEditingController> priceControllers = {};
