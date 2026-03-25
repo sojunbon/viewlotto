@@ -27,26 +27,73 @@ class _HistoryScreenState extends State<HistoryScreen> {
         return true;
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8F9FA),
-        appBar: AppBar(
-          title: Text(
-            _selectedBillId == null ? "ประวัติการแทง" : "รายละเอียดบิล",
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          backgroundColor: const Color(0xFF11998E),
-          leading: _selectedBillId != null
-              ? IconButton(
-                  icon: const Icon(Icons.arrow_back_ios, size: 20),
+        backgroundColor: const Color(0xFFF0F2F5),
+        appBar: _selectedBillId != null
+            ? AppBar(
+                title: const Text(
+                  "รายละเอียดบิล",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                backgroundColor: const Color(0xFF11998E),
+                centerTitle: true,
+                leading: IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                   onPressed: () => setState(() => _selectedBillId = null),
-                )
-              : null,
-          elevation: 0,
-          centerTitle: true,
-        ),
+                ),
+              )
+            : AppBar(
+                backgroundColor: const Color(0xFF00A859),
+                toolbarHeight: 70,
+                elevation: 0,
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "ประวัติการแทง",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            "70.00 ↻",
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const Text(
+                          "zodazozam",
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
         body: _selectedBillId == null
             ? _buildMainHistory(user?.uid)
             : _buildFullBillDetail(_selectedBillId!, _selectedBillData!),
@@ -54,31 +101,47 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // --- หน้าหลัก: รายการบิล ---
+  // --- หน้าหลัก: UI ตามภาพ image.png ---
   Widget _buildMainHistory(String? uid) {
-    if (uid == null) return const Center(child: Text("กรุณาเข้าสู่ระบบ"));
     return DefaultTabController(
-      length: 2,
+      length: 4,
       child: Column(
         children: [
           Container(
-            color: const Color(0xFF11998E),
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 15),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildSummaryItem("ยอดแทงวันนี้", "70.00"),
+                _buildSummaryItem("ออกผลแล้ว", "0.00"),
+                _buildSummaryItem("ยังไม่ออกผล", "70.00"),
+              ],
+            ),
+          ),
+          Container(
+            color: Colors.white,
             child: const TabBar(
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white70,
-              indicatorColor: Colors.white,
+              isScrollable: true,
+              labelColor: Color(0xFF00A859),
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: Color(0xFF00A859),
               indicatorWeight: 3,
               tabs: [
-                Tab(text: "รายการที่รอผล"),
-                Tab(text: "ประวัติทั้งหมด"),
+                Tab(text: "ทั้งหมด"),
+                Tab(text: "โพยที่ซื้อ"),
+                Tab(text: "ออกผลแล้ว"),
+                Tab(text: "ยังไม่ออก"),
               ],
             ),
           ),
           Expanded(
             child: TabBarView(
               children: [
-                _buildBillList(uid, 'pending'),
+                _buildBillList(uid, 'all'),
+                _buildBillList(uid, 'all'),
                 _buildBillList(uid, 'completed'),
+                _buildBillList(uid, 'pending'),
               ],
             ),
           ),
@@ -87,15 +150,38 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _buildBillList(String? uid, String statusGroup) {
+  Widget _buildSummaryItem(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.black,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBillList(String? uid, String filter) {
     Query query = FirebaseFirestore.instance
         .collection('bills')
         .where('uid', isEqualTo: uid);
-    if (statusGroup == 'pending') {
+    if (filter == 'pending')
       query = query.where('status', isEqualTo: 'pending');
-    } else {
-      query = query.where('status', whereIn: ['win', 'lose', 'completed']);
-    }
+    if (filter == 'completed')
+      query = query.where('status', whereIn: ['win', 'lose']);
 
     return StreamBuilder<QuerySnapshot>(
       stream: query.orderBy('timestamp', descending: true).snapshots(),
@@ -105,89 +191,193 @@ class _HistoryScreenState extends State<HistoryScreen> {
         final docs = snapshot.data!.docs;
         if (docs.isEmpty)
           return const Center(
-            child: Text("ไม่พบรายการบิล", style: TextStyle(color: Colors.grey)),
+            child: Text("ไม่มีรายการโพย", style: TextStyle(color: Colors.grey)),
           );
 
         return ListView.builder(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.only(top: 8),
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
-            final billId = docs[index].id;
-            return _buildBillCard(data, billId);
+            return _buildTicketCard(data, docs[index].id);
           },
         );
       },
     );
   }
 
-  Widget _buildBillCard(Map<String, dynamic> data, String billId) {
-    bool isWin = data['status'] == 'win';
-    Color statusColor = isWin
-        ? Colors.green
-        : (data['status'] == 'lose' ? Colors.red : Colors.orange);
+  Widget _buildTicketCard(Map<String, dynamic> data, String billId) {
     String dateStr = data['timestamp'] != null
         ? DateFormat(
-            'dd/MM/yyyy HH:mm',
+            'dd MMMM 2026',
           ).format((data['timestamp'] as Timestamp).toDate())
         : "";
+    String timeStr = data['timestamp'] != null
+        ? DateFormat(
+            'HH:mm:ss',
+          ).format((data['timestamp'] as Timestamp).toDate())
+        : "";
+    bool isPending = data['status'] == 'pending';
+    bool isWin = data['status'] == 'win';
 
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        onTap: () => setState(() {
-          _selectedBillId = billId;
-          _selectedBillData = data;
-        }),
-        title: Text(
-          "เลขที่บิล: ${billId.substring(billId.length - 8).toUpperCase()}",
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            dateStr,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-          ),
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              "฿${(data['net_pay'] ?? 0).toStringAsFixed(2)}",
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              data['status'] == 'pending'
-                  ? "รอผล"
-                  : (isWin ? "ถูกรางวัล" : "ไม่ถูกรางวัล"),
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: Colors.white,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00A859),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  "HD+",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 8),
+              const Text(
+                "zodazozam",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const CircleAvatar(
+                radius: 22,
+                backgroundColor: Color(0xFFF0F2F5),
+                child: Icon(Icons.flag, color: Colors.blue),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "หวยลาว",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      dateStr,
+                      style: const TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                    Text(
+                      timeStr,
+                      style: const TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "🛡️ เงินเดิมพัน : ฿ ${(data['net_pay'] ?? 0).toStringAsFixed(2)}",
+                    style: const TextStyle(
+                      color: Color(0xFF00A859),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(
+                isPending ? Icons.access_time : Icons.check_circle,
+                color: const Color(0xFF00A859),
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isPending
+                    ? "สถานะ: รอออกผลรางวัล"
+                    : (isWin ? "สถานะ: ถูกรางวัล ✨" : "สถานะ: ไม่ถูกรางวัล"),
+                style: const TextStyle(
+                  color: Color(0xFF00A859),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 25),
+          Row(
+            children: [
+              const Text("ผลแพ้ชนะ: ", style: TextStyle(fontSize: 14)),
+              Text(
+                isWin
+                    ? "฿ ${(data['total_win'] ?? 0).toStringAsFixed(2)}"
+                    : "฿ 0",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: isWin ? Colors.green : Colors.black,
+                ),
+              ),
+              const Spacer(),
+              if (isPending) ...[
+                ElevatedButton(
+                  onPressed: () {},
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey.shade200,
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    "คืนโพย",
+                    style: TextStyle(color: Colors.black87),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              ElevatedButton(
+                onPressed: () => setState(() {
+                  _selectedBillId = billId;
+                  _selectedBillData = data;
+                }),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00A859),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  "ดูโพย",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  // --- หน้าใหม่: รายละเอียดบิล (ตัดยอดสุทธิที่จ่ายออก) ---
+  // --- หน้าใหม่: รายละเอียดบิล (เน้นยอดรับรางวัลรายบรรทัด) ---
   Widget _buildFullBillDetail(String billId, Map<String, dynamic> billData) {
     bool isWin = billData['status'] == 'win';
 
     return Column(
       children: [
-        // ✅ ส่วน Header: โชว์เฉพาะยอดรางวัลที่ได้รับ (กรณีถูกหวย)
         if (isWin)
           Container(
             width: double.infinity,
@@ -206,57 +396,31 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   style: TextStyle(
                     color: Colors.green,
                     fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   "฿${(billData['total_win'] ?? 0).toStringAsFixed(2)}",
                   style: const TextStyle(
-                    fontSize: 36,
+                    fontSize: 40,
                     fontWeight: FontWeight.bold,
                     color: Colors.green,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.stars, color: Colors.amber, size: 20),
-                      SizedBox(width: 5),
-                      Text(
-                        "ยินดีด้วย! คุณถูกรางวัลในบิลนี้",
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               ],
             ),
           ),
-
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
               "รายการตัวเลขที่แทง",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-                fontSize: 16,
-              ),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ),
         ),
-
-        // รายการตัวเลข (ยอดแทง x ราคาจ่าย = ยอดที่ได้รับ)
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -288,13 +452,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             ? Colors.green.withOpacity(0.5)
                             : Colors.transparent,
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.02),
-                          blurRadius: 5,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
                     ),
                     child: Row(
                       children: [
@@ -324,7 +481,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   fontSize: 14,
                                 ),
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 4),
                               Text(
                                 "฿${priceBet.toStringAsFixed(0)} x $ratePay",
                                 style: TextStyle(
