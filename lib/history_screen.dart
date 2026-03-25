@@ -28,88 +28,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF0F2F5),
-        appBar: _selectedBillId != null
-            ? AppBar(
-                title: const Text(
-                  "รายละเอียดบิล",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                backgroundColor: const Color(0xFF11998E),
-                centerTitle: true,
-                leading: IconButton(
-                  icon: const Icon(
-                    Icons.arrow_back_ios,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                  onPressed: () => setState(() => _selectedBillId = null),
-                ),
-              )
-            : AppBar(
-                backgroundColor: const Color(0xFF00A859),
-                toolbarHeight: 70,
-                elevation: 0,
-                title: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "ประวัติการแทง",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            "70.00 ↻",
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const Text(
-                          "zodazozam",
-                          style: TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-        body: _selectedBillId == null
-            ? _buildMainHistory(user?.uid)
-            : _buildFullBillDetail(_selectedBillId!, _selectedBillData!),
+        // ✅ ตัด AppBar/Banner สีเขียวด้านบนออกแล้ว
+        body: SafeArea(
+          child: _selectedBillId == null
+              ? _buildMainHistory(user?.uid)
+              : _buildFullBillDetail(_selectedBillId!, _selectedBillData!),
+        ),
       ),
     );
   }
 
-  // --- หน้าหลัก: UI ตามภาพ image.png ---
+  // --- หน้าหลัก: สรุปยอดและรายการโพย ---
   Widget _buildMainHistory(String? uid) {
     return DefaultTabController(
       length: 4,
       child: Column(
         children: [
+          // ✅ แถบสรุปยอดด้านบน (แสดงทันทีไม่ต้องมีหัวข้อ)
           Container(
             color: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 15),
+            padding: const EdgeInsets.symmetric(vertical: 20),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -135,6 +73,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 8),
           Expanded(
             child: TabBarView(
               children: [
@@ -166,7 +105,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           value,
           style: const TextStyle(
             color: Colors.black,
-            fontSize: 16,
+            fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -189,13 +128,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         if (!snapshot.hasData)
           return const Center(child: CircularProgressIndicator());
         final docs = snapshot.data!.docs;
-        if (docs.isEmpty)
-          return const Center(
-            child: Text("ไม่มีรายการโพย", style: TextStyle(color: Colors.grey)),
-          );
-
         return ListView.builder(
-          padding: const EdgeInsets.only(top: 8),
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
@@ -206,6 +139,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  // ✅ ปรับการ์ดโดยตัดป้าย "HD+ zodazozam" ออกแล้ว
   Widget _buildTicketCard(Map<String, dynamic> data, String billId) {
     String dateStr = data['timestamp'] != null
         ? DateFormat(
@@ -221,7 +155,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     bool isWin = data['status'] == 'win';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 2),
       color: Colors.white,
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -229,35 +163,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00A859),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  "HD+",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                "zodazozam",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
               const CircleAvatar(
-                radius: 22,
+                radius: 25,
                 backgroundColor: Color(0xFFF0F2F5),
-                child: Icon(Icons.flag, color: Colors.blue),
+                child: Icon(Icons.flag, color: Colors.blue, size: 30),
               ),
               const SizedBox(width: 15),
               Expanded(
@@ -286,7 +195,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    "🛡️ เงินเดิมพัน : ฿ ${(data['net_pay'] ?? 0).toStringAsFixed(2)}",
+                    "🛡️ เงินเดิมพัน : ฿ ${(data['net_pay'] ?? 0.0).toDouble().toStringAsFixed(2)}",
                     style: const TextStyle(
                       color: Color(0xFF00A859),
                       fontWeight: FontWeight.bold,
@@ -324,7 +233,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               const Text("ผลแพ้ชนะ: ", style: TextStyle(fontSize: 14)),
               Text(
                 isWin
-                    ? "฿ ${(data['total_win'] ?? 0).toStringAsFixed(2)}"
+                    ? "฿ ${(data['total_win'] ?? 0.0).toDouble().toStringAsFixed(2)}"
                     : "฿ 0",
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
@@ -372,23 +281,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // --- หน้าใหม่: รายละเอียดบิล (เน้นยอดรับรางวัลรายบรรทัด) ---
+  // --- รายละเอียดบิล (Full Page) แก้ไขบั๊ก Type 'int' ---
   Widget _buildFullBillDetail(String billId, Map<String, dynamic> billData) {
     bool isWin = billData['status'] == 'win';
-
     return Column(
       children: [
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios),
+                onPressed: () => setState(() => _selectedBillId = null),
+              ),
+              const Text(
+                "รายละเอียดบิล",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
         if (isWin)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(25),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(30),
-                bottomRight: Radius.circular(30),
-              ),
-            ),
+            color: Colors.white,
             child: Column(
               children: [
                 const Text(
@@ -399,9 +317,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 8),
                 Text(
-                  "฿${(billData['total_win'] ?? 0).toStringAsFixed(2)}",
+                  "฿${(billData['total_win'] ?? 0.0).toDouble().toStringAsFixed(2)}",
                   style: const TextStyle(
                     fontSize: 40,
                     fontWeight: FontWeight.bold,
@@ -412,7 +329,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ),
         const Padding(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
+          padding: EdgeInsets.fromLTRB(20, 15, 20, 10),
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -436,10 +353,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 itemCount: bets.length,
                 itemBuilder: (context, index) {
                   final bet = bets[index].data() as Map<String, dynamic>;
-                  bool betWin = bet['status'] == 'win';
-                  double priceBet = (bet['price_bet'] ?? 0).toDouble();
-                  double ratePay = (bet['rate_pay'] ?? 0).toDouble();
-                  double potentialPayout = priceBet * ratePay;
+                  // ✅ แก้ไขบั๊ก Type Error: ใช้ .toDouble() ทุกจุดที่เป็นตัวเลข
+                  double priceBet = (bet['price_bet'] ?? 0.0).toDouble();
+                  double ratePay = (bet['rate_pay'] ?? 0.0).toDouble();
+                  double payout = priceBet * ratePay;
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
@@ -447,23 +364,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(15),
-                      border: Border.all(
-                        color: betWin
-                            ? Colors.green.withOpacity(0.5)
-                            : Colors.transparent,
-                      ),
                     ),
                     child: Row(
                       children: [
                         CircleAvatar(
-                          backgroundColor: betWin
+                          backgroundColor: bet['status'] == 'win'
                               ? Colors.green
                               : Colors.grey.shade100,
                           radius: 25,
                           child: Text(
                             "${bet['number']}",
                             style: TextStyle(
-                              color: betWin ? Colors.white : Colors.black87,
+                              color: bet['status'] == 'win'
+                                  ? Colors.white
+                                  : Colors.black,
                               fontWeight: FontWeight.bold,
                               fontSize: 18,
                             ),
@@ -478,14 +392,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 "${bet['category']}",
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 14,
                                 ),
                               ),
-                              const SizedBox(height: 4),
                               Text(
-                                "฿${priceBet.toStringAsFixed(0)} x $ratePay",
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
+                                "฿${priceBet.toStringAsFixed(0)} x ${ratePay.toStringAsFixed(0)}",
+                                style: const TextStyle(
+                                  color: Colors.grey,
                                   fontSize: 13,
                                 ),
                               ),
@@ -503,33 +415,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               ),
                             ),
                             Text(
-                              "฿${potentialPayout.toStringAsFixed(0)}",
+                              "฿${payout.toStringAsFixed(0)}",
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: betWin ? Colors.green : Colors.black87,
+                                color: bet['status'] == 'win'
+                                    ? Colors.green
+                                    : Colors.black,
                               ),
                             ),
-                            if (betWin)
-                              Container(
-                                margin: const EdgeInsets.only(top: 4),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.green,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  "ถูกรางวัล",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
                           ],
                         ),
                       ],
