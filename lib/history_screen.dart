@@ -1,9 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // อย่าลืมเพิ่ม intl: ^0.18.1 ใน pubspec.yaml
+import 'package:intl/intl.dart';
 
-// หน้าจอประวัติการแทงหวย
 class HistoryScreen extends StatelessWidget {
   const HistoryScreen({super.key});
 
@@ -14,43 +13,46 @@ class HistoryScreen extends StatelessWidget {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        appBar: PreferredSize(
-          preferredSize: const Size.fromHeight(50),
-          child: Container(
-            color: Colors.white,
-            child: const TabBar(
-              labelColor: Color(0xFF11998E),
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Color(0xFF11998E),
-              tabs: [
-                Tab(text: "รายการที่รอผล"),
-                Tab(text: "ประวัติการแทง"),
-              ],
-            ),
+        appBar: AppBar(
+          title: const Text(
+            "ประวัติการแทง",
+            style: TextStyle(color: Colors.white, fontSize: 18),
+          ),
+          backgroundColor: const Color(0xFF11998E),
+          elevation: 0,
+          bottom: const TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            tabs: [
+              Tab(text: "รายการที่รอผล"),
+              Tab(text: "ประวัติทั้งหมด"),
+            ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildHistoryList(user?.uid, 'pending'), // รายการที่ยังไม่รู้ผล
-            _buildHistoryList(user?.uid, 'completed'), // รายการที่ตรวจผลแล้ว
+            _buildBillList(user?.uid, 'pending'), // ดึงจากสถานะ pending
+            _buildBillList(user?.uid, 'completed'), // ดึงสถานะอื่นๆ
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHistoryList(String? uid, String statusGroup) {
+  Widget _buildBillList(String? uid, String statusGroup) {
     if (uid == null) return const Center(child: Text("กรุณาเข้าสู่ระบบ"));
 
-    // สร้าง Query ตามสถานะ
+    // ดึงข้อมูลจาก collection 'bills' ตามโครงสร้างที่เราบันทึกไว้
     Query query = FirebaseFirestore.instance
-        .collection('lotto_tickets') // เปลี่ยนเป็นชื่อ Collection ที่คุณเก็บโพย
+        .collection('bills')
         .where('uid', isEqualTo: uid);
 
     if (statusGroup == 'pending') {
-      query = query.where('status', isEqualTo: 'waiting'); // รอผล
+      query = query.where('status', isEqualTo: 'pending');
     } else {
-      query = query.where('status', whereIn: ['win', 'lose']); // ได้ผลแล้ว
+      // สำหรับประวัติทั้งหมด ให้ดึงรายการที่ตัดสินผลแล้ว
+      query = query.where('status', whereIn: ['win', 'lose', 'completed']);
     }
 
     return StreamBuilder<QuerySnapshot>(
@@ -58,31 +60,34 @@ class HistoryScreen extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.hasError)
           return Center(child: Text("เกิดข้อผิดพลาด: ${snapshot.error}"));
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting)
           return const Center(child: CircularProgressIndicator());
-        }
 
         final docs = snapshot.data!.docs;
-        if (docs.isEmpty) {
+        if (docs.isEmpty)
           return const Center(child: Text("ไม่มีรายการโพยในขณะนี้"));
-        }
 
         return ListView.builder(
           padding: const EdgeInsets.all(12),
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
-            return _buildTicketCard(data);
+            final billId = docs[index].id;
+            return _buildBillCard(context, data, billId);
           },
         );
       },
     );
   }
 
-  Widget _buildTicketCard(Map<String, dynamic> data) {
-    // จัดการสีตามสถานะ
+  Widget _buildBillCard(
+    BuildContext context,
+    Map<String, dynamic> data,
+    String billId,
+  ) {
     Color statusColor = Colors.orange;
     String statusText = "รอผลรางวัล";
+
     if (data['status'] == 'win') {
       statusColor = Colors.green;
       statusText = "ถูกรางวัล";
@@ -91,7 +96,6 @@ class HistoryScreen extends StatelessWidget {
       statusText = "ไม่ถูกรางวัล";
     }
 
-    // ฟอร์แมตวันที่
     String dateStr = "";
     if (data['timestamp'] != null) {
       DateTime dt = (data['timestamp'] as Timestamp).toDate();
@@ -99,100 +103,169 @@ class HistoryScreen extends StatelessWidget {
     }
 
     return Card(
-      elevation: 2,
+      elevation: 3,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Column(
-        children: [
-          // ส่วนหัวของโพย
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.1),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(15),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  data['lottoTitle'] ?? "หวย",
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Text(
-                    statusText,
-                    style: const TextStyle(color: Colors.white, fontSize: 11),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // รายละเอียดเลขที่แทง
-          Padding(
-            padding: const EdgeInsets.all(15),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "เลขที่แทง",
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                    Text(
-                      data['numbers'] ?? "-",
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueAccent,
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "ยอดเดิมพัน: ฿${data['totalPrice']}",
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    if (data['status'] == 'win')
+      child: InkWell(
+        onTap: () => _showBillDetails(context, billId, data),
+        borderRadius: BorderRadius.circular(15),
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        "ได้รับ: ฿${data['prize']}",
+                        "เลขที่บิล: ${billId.substring(billId.length - 8)}",
                         style: const TextStyle(
-                          color: Colors.green,
                           fontWeight: FontWeight.bold,
+                          fontSize: 14,
                         ),
                       ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    dateStr,
-                    style: const TextStyle(color: Colors.grey, fontSize: 11),
+                      Text(
+                        dateStr,
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      statusText,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 25),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "ยอดรวมบิล:",
+                    style: TextStyle(color: Colors.black87),
+                  ),
+                  Text(
+                    "฿${(data['net_pay'] ?? 0).toStringAsFixed(2)}",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: Color(0xFF11998E),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              const Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  "ดูรายละเอียด >",
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
+    );
+  }
+
+  // ฟังก์ชันแสดงรายละเอียดเลขภายในบิล
+  void _showBillDetails(
+    BuildContext context,
+    String billId,
+    Map<String, dynamic> billData,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "รายละเอียดการแทง",
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const Divider(),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('bets')
+                      .where('billId', isEqualTo: billId)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData)
+                      return const Center(child: CircularProgressIndicator());
+                    final bets = snapshot.data!.docs;
+                    return ListView.builder(
+                      itemCount: bets.length,
+                      itemBuilder: (context, index) {
+                        final bet = bets[index].data() as Map<String, dynamic>;
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            "${bet['number']} (${bet['category']})",
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text("ราคาจ่าย x${bet['rate_pay']}"),
+                          trailing: Text(
+                            "฿${bet['price_bet']}",
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              const Divider(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("ยอดจ่ายสุทธิ:", style: TextStyle(fontSize: 16)),
+                  Text(
+                    "฿${(billData['net_pay'] ?? 0).toStringAsFixed(2)}",
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF11998E),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
     );
   }
 }
