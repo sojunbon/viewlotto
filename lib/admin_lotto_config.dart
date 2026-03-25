@@ -11,6 +11,7 @@ class AdminLottoConfig extends StatefulWidget {
   State<AdminLottoConfig> createState() => _AdminLottoConfigState();
 }
 
+// หน้าจอสำหรับจัดการข้อมูลหวยและราคาจ่าย
 class _AdminLottoConfigState extends State<AdminLottoConfig> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
