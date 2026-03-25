@@ -181,46 +181,44 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // --- หน้าใหม่: รายละเอียดบิล (เน้นยอดที่ลูกค้าได้รับ) ---
+  // --- หน้าใหม่: รายละเอียดบิล (ตัดยอดสุทธิที่จ่ายออก) ---
   Widget _buildFullBillDetail(String billId, Map<String, dynamic> billData) {
     bool isWin = billData['status'] == 'win';
 
     return Column(
       children: [
-        // ส่วน Header แสดงสถานะรางวัลเด่นๆ
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(25),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(30),
-              bottomRight: Radius.circular(30),
+        // ✅ ส่วน Header: โชว์เฉพาะยอดรางวัลที่ได้รับ (กรณีถูกหวย)
+        if (isWin)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(25),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(30),
+                bottomRight: Radius.circular(30),
+              ),
             ),
-          ),
-          child: Column(
-            children: [
-              Text(
-                isWin ? "ยอดเงินรางวัลที่ได้รับ" : "ยอดสุทธิที่จ่าย",
-                style: TextStyle(
-                  color: isWin ? Colors.green : Colors.grey.shade600,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+            child: Column(
+              children: [
+                const Text(
+                  "ยอดเงินรางวัลที่ได้รับ",
+                  style: TextStyle(
+                    color: Colors.green,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                isWin
-                    ? "฿${(billData['total_win'] ?? 0).toStringAsFixed(2)}"
-                    : "฿${(billData['net_pay'] ?? 0).toStringAsFixed(2)}",
-                style: TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.bold,
-                  color: isWin ? Colors.green : Colors.black,
-                  letterSpacing: 1,
+                const SizedBox(height: 8),
+                Text(
+                  "฿${(billData['total_win'] ?? 0).toStringAsFixed(2)}",
+                  style: const TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                    letterSpacing: 1,
+                  ),
                 ),
-              ),
-              if (isWin)
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
                   child: Row(
@@ -239,9 +237,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ],
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
-        ),
+
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
           child: Align(
@@ -256,6 +255,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ),
         ),
+
         // รายการตัวเลข (ยอดแทง x ราคาจ่าย = ยอดที่ได้รับ)
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
@@ -298,7 +298,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                     child: Row(
                       children: [
-                        // ฝั่งซ้าย: ตัวเลข
                         CircleAvatar(
                           backgroundColor: betWin
                               ? Colors.green
@@ -314,7 +313,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ),
                         ),
                         const SizedBox(width: 15),
-                        // กลาง: รายละเอียดการคำนวณ
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -337,7 +335,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             ],
                           ),
                         ),
-                        // ฝั่งขวา: ยอดที่จะได้รับ
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
