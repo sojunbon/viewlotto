@@ -17,7 +17,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
 
   Map<int, TextEditingController> priceControllers = {};
   Map<String, Map<String, double>> _allBasePayRates = {};
-  // ✅ เก็บยอด "ที่ต้องจ่ายสะสม" ของแต่ละเลขในงวดนี้
   Map<String, double> _accumulatedPayoutMap = {};
 
   int _countPerNum = 5000;
@@ -41,7 +40,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   }
 
   Future<void> _loadInitialData() async {
-    debugPrint("🚀 [Debug] เริ่มโหลดข้อมูล Initial Data...");
     try {
       final payrateDoc = await _db.collection('configs').doc('payrate').get();
       if (payrateDoc.exists) {
@@ -66,7 +64,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             setState(() => _userDiscountPercent = discount);
           }
         }
-        // ✅ โหลดยอดจ่ายสะสมของเลขในระบบ
         await _fetchTotalPayoutRisk();
       } catch (e) {
         debugPrint("🚨 [Debug] ดึงข้อมูล User/Payout ผิดพลาด: $e");
@@ -75,7 +72,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     _loadBaseRates();
   }
 
-  // ✅ ฟังก์ชันคำนวณหาความเสี่ยง (ยอดจ่ายสะสม) ของแต่ละเลขจาก Firestore
   Future<void> _fetchTotalPayoutRisk() async {
     for (var bet in widget.draftBets) {
       String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
@@ -127,6 +123,10 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     if (index >= widget.draftBets.length)
       return {"rate": 0, "isDiscounted": false, "isClosed": false};
     var bet = widget.draftBets[index];
+
+    // ✅ ดึงราคาที่กำลังพิมพ์อยู่ในช่องนี้มาคำนวณ Real-time
+    double input = double.tryParse(priceControllers[index]?.text ?? "") ?? 0;
+
     String cat = (bet['cat'] ?? "").replaceAll(RegExp(r'\s+'), "");
     String fieldKey = "";
     if (cat.contains("สี่ตัว"))
@@ -141,18 +141,21 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       fieldKey = "digit1";
 
     double base = _allBasePayRates[bet['lottoKey']]?[fieldKey] ?? 0;
-
-    // ✅ Logic ลดหลั่น: ใช้ "ยอดจ่ายสะสม" หารด้วย "เกณฑ์ยอดจ่าย"
     String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
     double accumulatedRisk = _accumulatedPayoutMap[mapKey] ?? 0;
 
-    int steps = accumulatedRisk > 0
-        ? (accumulatedRisk / _countPerNum).floor()
+    // ✅ คำนวณความเสี่ยงรวม (ยอดจ่ายสะสมเดิม + ยอดจ่ายที่กำลังพิมพ์)
+    double totalPotentialRisk = accumulatedRisk + (input * base);
+
+    // ✅ คิดขั้นบันไดตามยอดรวมความเสี่ยง
+    int steps = totalPotentialRisk > 0
+        ? (totalPotentialRisk / _countPerNum).floor()
         : 0;
     int finalRate = (base * (1 - (steps * _payPercent / 100))).round();
 
-    if (finalRate <= 0)
+    if (finalRate <= 0 && totalPotentialRisk > 0) {
       return {"rate": 0, "isDiscounted": true, "isClosed": true};
+    }
 
     return {
       "rate": finalRate,
@@ -171,7 +174,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     );
     if (grandTotal <= 0) return;
 
-    // ✅ ตรวจสอบว่ามีเลขไหน "เต็ม" (Rate 0) หรือไม่
     for (int i = 0; i < widget.draftBets.length; i++) {
       if (_getRateInfo(i)['isClosed']) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -203,10 +205,8 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         return;
       }
 
-      // ✅ ตัดยอดเงิน
       batch.update(userRef, {'credit': FieldValue.increment(-netPay)});
 
-      // ✅ บันทึกหัวบิล
       DocumentReference billRef = _db.collection('bills').doc(billId);
       batch.set(billRef, {
         'billId': billId,
@@ -219,7 +219,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         'status': 'pending',
       });
 
-      // ✅ บันทึกรายการแทง
       for (int i = 0; i < widget.draftBets.length; i++) {
         double amount = double.tryParse(priceControllers[i]!.text) ?? 0;
         if (amount <= 0) continue;
@@ -247,7 +246,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     }
   }
 
-  // --- ส่วน build UI คงเดิม (อ้างอิงสถานะ isClosed เพื่อแจ้งเตือนเลขเต็ม) ---
   @override
   Widget build(BuildContext context) {
     Map<String, List<int>> groupedIndices = {};
@@ -409,7 +407,10 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   Widget _buildPriceRow(int index) {
     var rateInfo = _getRateInfo(index);
     bool isClosed = rateInfo['isClosed'];
+    bool isDiscounted =
+        rateInfo['isDiscounted']; // ✅ สำหรับแจ้งเตือนเลขอั้น (Tier 1 ขึ้นไป)
     bool isActive = _activeFieldIndex == index && _showKeypad;
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 5),
       color: isActive ? kMainGreen.withOpacity(0.08) : Colors.transparent,
@@ -433,16 +434,20 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             decoration: BoxDecoration(
               color: isClosed ? Colors.grey.shade200 : Colors.white,
               borderRadius: BorderRadius.circular(10),
+              // ✅ ใส่กรอบแดงทันทีหากเป็นเลขอั้นหรือเต็ม
               border: Border.all(
-                color: isClosed
+                color: isClosed || isDiscounted
                     ? Colors.red
                     : (isActive ? kMainGreen : Colors.grey.shade300),
+                width: isClosed || isDiscounted ? 2.5 : 1.5,
               ),
             ),
             child: Center(
               child: Text(
                 isClosed ? "เต็ม" : priceControllers[index]!.text,
-                style: TextStyle(color: isClosed ? Colors.red : Colors.black),
+                style: TextStyle(
+                  color: isClosed || isDiscounted ? Colors.red : Colors.black,
+                ),
               ),
             ),
           ),
@@ -451,7 +456,12 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             child: Center(
               child: Text(
                 "x${rateInfo['rate']}",
-                style: TextStyle(color: isClosed ? Colors.red : Colors.black),
+                style: TextStyle(
+                  color: isClosed || isDiscounted ? Colors.red : Colors.black,
+                  fontWeight: isClosed || isDiscounted
+                      ? FontWeight.bold
+                      : FontWeight.normal,
+                ),
               ),
             ),
           ),
@@ -462,7 +472,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
               textAlign: TextAlign.right,
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: isClosed ? Colors.red : Colors.black,
+                color: isClosed || isDiscounted ? Colors.red : Colors.black,
               ),
             ),
           ),
@@ -472,7 +482,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     );
   }
 
-  // แป้นพิมพ์และส่วนปุ่มลัด
   Widget _buildSymmetricKeypad() {
     return Container(
       padding: const EdgeInsets.all(15),
@@ -555,6 +564,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       ),
     ),
   );
+
   Widget _qBtn(String l, int v) => InkWell(
     onTap: () => setState(() {
       for (var c in priceControllers.values) {
@@ -593,7 +603,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     } else {
       if (cur.length < 6) priceControllers[_activeFieldIndex]!.text = cur + k;
     }
-    setState(() {});
+    setState(() {}); // ✅ สั่งคำนวณ rateInfo ใหม่ทันทีที่พิมพ์
   }
 
   Widget _buildSummaryFooter() {
