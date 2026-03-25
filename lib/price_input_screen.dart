@@ -12,11 +12,11 @@ class PriceInputScreen extends StatefulWidget {
   State<PriceInputScreen> createState() => _PriceInputScreenState();
 }
 
-// PriceInputScreen เป็นหน้าจอที่ให้ผู้ใช้ระบุราคาสำหรับแต่ละหมายเลขที่เลือกใน draftBets โดยจะคำนวณอัตราจ่ายแบบไดนามิกตามยอดเสี่ยงสะสมและส่วนลดของผู้ใช้ และส่งข้อมูลไปยัง Firebase เมื่อยืนยันการส่งโพย
 class _PriceInputScreenState extends State<PriceInputScreen> {
   final _db = FirebaseFirestore.instance;
   Map<int, TextEditingController> priceControllers = {};
   Map<String, Map<String, double>> _allBasePayRates = {};
+  Map<String, Map<String, double>> _lottoMaxLimits = {}; // ✅ เก็บค่า Max Limit
   Map<String, double> _accumulatedPayoutMap = {};
 
   int _countPerNum = 5000;
@@ -108,6 +108,14 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             'digit1': (lData['digit1'] ?? 0).toDouble(),
             'swift': (lData['swift'] ?? 0).toDouble(),
           };
+          // ✅ ดึงยอด Max Limit (รวม maxswift)
+          _lottoMaxLimits[key] = {
+            'digit4': (lData['maxdigit4'] ?? 0).toDouble(),
+            'digit3': (lData['maxdigit3'] ?? 0).toDouble(),
+            'digit2': (lData['maxdigit2'] ?? 0).toDouble(),
+            'digit1': (lData['maxdigit1'] ?? 0).toDouble(),
+            'swift': (lData['maxswift'] ?? 0).toDouble(),
+          };
         });
       }
     }
@@ -115,7 +123,12 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
 
   Map<String, dynamic> _getRateInfo(int index) {
     if (index >= widget.draftBets.length)
-      return {"rate": 0, "isDiscounted": false, "isClosed": false};
+      return {
+        "rate": 0,
+        "isDiscounted": false,
+        "isClosed": false,
+        "isOverLimit": false,
+      };
     var bet = widget.draftBets[index];
     double input = double.tryParse(priceControllers[index]?.text ?? "") ?? 0;
 
@@ -133,6 +146,11 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       fieldKey = "digit1";
 
     double base = _allBasePayRates[bet['lottoKey']]?[fieldKey] ?? 0;
+    double maxLimit = _lottoMaxLimits[bet['lottoKey']]?[fieldKey] ?? 0;
+
+    // ✅ เช็คว่ายอดแทงเกินกำหนดหรือไม่
+    bool isOverLimit = maxLimit > 0 && input > maxLimit;
+
     String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
     double accumulatedRisk = _accumulatedPayoutMap[mapKey] ?? 0;
 
@@ -143,17 +161,43 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     int finalRate = (base * (1 - (steps * _payPercent / 100))).round();
 
     if (finalRate <= 0 && totalPotentialRisk > 0)
-      return {"rate": 0, "isDiscounted": true, "isClosed": true};
+      return {
+        "rate": 0,
+        "isDiscounted": true,
+        "isClosed": true,
+        "isOverLimit": isOverLimit,
+        "maxAmt": maxLimit,
+      };
+
     return {
       "rate": finalRate,
       "isDiscounted": finalRate < base,
       "isClosed": false,
+      "isOverLimit": isOverLimit,
+      "maxAmt": maxLimit,
     };
   }
 
   Future<void> _submitBetsToFirebase() async {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
+    // ✅ ตรวจสอบยอดแทงสูงสุดก่อนส่งบิล
+    for (int i = 0; i < widget.draftBets.length; i++) {
+      var r = _getRateInfo(i);
+      if (r['isOverLimit']) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red,
+            content: Text(
+              "เลข ${widget.draftBets[i]['num']} แทงเกินยอดสูงสุด (${r['maxAmt']} บ.)",
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
     double total = 0;
     priceControllers.values.forEach(
       (c) => total += double.tryParse(c.text) ?? 0,
@@ -195,6 +239,8 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           'uid': user.uid,
           'billId': billId,
           'number': widget.draftBets[i]['num'],
+          'category': widget.draftBets[i]['cat'],
+          'lotto_key': widget.draftBets[i]['lottoKey'],
           'price_bet': amt,
           'rate_pay': r['rate'],
           'total_pay': amt * r['rate'],
@@ -270,7 +316,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           ),
           ...indices.map((i) => _buildPriceRow(i)).toList(),
 
-          // ✨ กลับมาแล้ว: Widget แถบแคปซูลรวมยอดและส่วนลด
           const SizedBox(height: 15),
           Padding(
             padding: const EdgeInsets.only(bottom: 15),
@@ -337,13 +382,15 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   Widget _buildPriceRow(int index) {
     var r = _getRateInfo(index);
     bool active = _activeFieldIndex == index && _showKeypad;
-    bool red = r['isDiscounted'] || r['isClosed'];
+    // ✅ แสดงสีแดงเมื่อเกินยอดแทงสูงสุด
+    bool over = r['isOverLimit'];
+    bool red = r['isDiscounted'] || r['isClosed'] || over;
 
     return InkWell(
       onTap: () => setState(() {
         _activeFieldIndex = index;
         _showKeypad = true;
-      }), // ✅ แป้นพิมพ์จะเด้งเมื่อจิ้ม
+      }),
       child: Container(
         padding: const EdgeInsets.all(10),
         color: active ? kMainGreen.withOpacity(0.08) : Colors.transparent,
@@ -368,16 +415,21 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                 color: r['isClosed'] ? Colors.grey.shade200 : Colors.white,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: red
-                      ? Colors.red
-                      : (active ? kMainGreen : Colors.grey.shade300),
-                  width: red ? 2.5 : 1.5,
+                  color: over
+                      ? Colors.red.shade900
+                      : (red
+                            ? Colors.red
+                            : (active ? kMainGreen : Colors.grey.shade300)),
+                  width: over ? 3.0 : (red ? 2.5 : 1.5),
                 ),
               ),
               child: Center(
                 child: Text(
                   r['isClosed'] ? "เต็ม" : priceControllers[index]!.text,
-                  style: TextStyle(color: red ? Colors.red : Colors.black),
+                  style: TextStyle(
+                    color: red ? Colors.red : Colors.black,
+                    fontWeight: over ? FontWeight.bold : FontWeight.normal,
+                  ),
                 ),
               ),
             ),
@@ -408,6 +460,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     );
   }
 
+  // --- Widget Keypad และ Footer (คงเดิมตาม Logic เดิมของคุณ) ---
   Widget _buildSymmetricKeypad() {
     return Container(
       padding: const EdgeInsets.all(15),
@@ -490,6 +543,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       ),
     ),
   );
+
   Widget _qBtn(String l, int v) => InkWell(
     onTap: () => setState(() {
       for (var c in priceControllers.values) {
