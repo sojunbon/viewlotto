@@ -16,10 +16,10 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   final _db = FirebaseFirestore.instance;
   Map<int, TextEditingController> priceControllers = {};
   Map<String, Map<String, double>> _allBasePayRates = {};
-  Map<String, Map<String, double>> _lottoMaxLimits = {}; // ✅ เก็บค่า Max Limit
+  Map<String, Map<String, double>> _lottoMaxLimits = {};
   Map<String, double> _accumulatedPayoutMap = {};
 
-  int _countPerNum = 5000;
+  int _countPerNum = 10000; // ค่าเริ่มต้นจากระบบ
   int _payPercent = 10;
   double _userDiscountPercent = 0.0;
   int _activeFieldIndex = 0;
@@ -44,7 +44,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       final payrateDoc = await _db.collection('configs').doc('payrate').get();
       if (payrateDoc.exists) {
         setState(() {
-          _countPerNum = (payrateDoc.data()?['countpernum'] ?? 5000).toInt();
+          _countPerNum = (payrateDoc.data()?['countpernum'] ?? 10000).toInt();
           _payPercent = (payrateDoc.data()?['pay_percent'] ?? 10).toInt();
         });
       }
@@ -108,7 +108,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             'digit1': (lData['digit1'] ?? 0).toDouble(),
             'swift': (lData['swift'] ?? 0).toDouble(),
           };
-          // ✅ ดึงยอด Max Limit (รวม maxswift)
           _lottoMaxLimits[key] = {
             'digit4': (lData['maxdigit4'] ?? 0).toDouble(),
             'digit3': (lData['maxdigit3'] ?? 0).toDouble(),
@@ -148,19 +147,18 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     double base = _allBasePayRates[bet['lottoKey']]?[fieldKey] ?? 0;
     double maxLimit = _lottoMaxLimits[bet['lottoKey']]?[fieldKey] ?? 0;
 
-    // ✅ เช็คว่ายอดแทงเกินกำหนดหรือไม่
     bool isOverLimit = maxLimit > 0 && input > maxLimit;
 
     String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
     double accumulatedRisk = _accumulatedPayoutMap[mapKey] ?? 0;
 
-    double totalPotentialRisk = accumulatedRisk + (input * base);
-    int steps = totalPotentialRisk > 0
-        ? (totalPotentialRisk / _countPerNum).floor()
+    // คำนวณเรทจากยอดที่มีในระบบแล้วเท่านั้น เพื่อแก้บั๊กเรทลดล่วงหน้า
+    int steps = accumulatedRisk > 0
+        ? (accumulatedRisk / _countPerNum).floor()
         : 0;
     int finalRate = (base * (1 - (steps * _payPercent / 100))).round();
 
-    if (finalRate <= 0 && totalPotentialRisk > 0)
+    if (finalRate <= 0)
       return {
         "rate": 0,
         "isDiscounted": true,
@@ -182,7 +180,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // ✅ ตรวจสอบยอดแทงสูงสุดก่อนส่งบิล
     for (int i = 0; i < widget.draftBets.length; i++) {
       var r = _getRateInfo(i);
       if (r['isOverLimit']) {
@@ -221,7 +218,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       }
 
       batch.update(userRef, {'credit': FieldValue.increment(-netPay)});
-
       String billId = "BILL-${DateTime.now().millisecondsSinceEpoch}";
       batch.set(_db.collection('bills').doc(billId), {
         'billId': billId,
@@ -315,7 +311,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             ),
           ),
           ...indices.map((i) => _buildPriceRow(i)).toList(),
-
           const SizedBox(height: 15),
           Padding(
             padding: const EdgeInsets.only(bottom: 15),
@@ -382,7 +377,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   Widget _buildPriceRow(int index) {
     var r = _getRateInfo(index);
     bool active = _activeFieldIndex == index && _showKeypad;
-    // ✅ แสดงสีแดงเมื่อเกินยอดแทงสูงสุด
     bool over = r['isOverLimit'];
     bool red = r['isDiscounted'] || r['isClosed'] || over;
 
@@ -453,14 +447,21 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                 ),
               ),
             ),
-            const SizedBox(width: 40),
+            // ✅ ปุ่ม Clear (กากบาท)
+            const SizedBox(width: 5),
+            IconButton(
+              onPressed: () => setState(() => priceControllers[index]!.clear()),
+              icon: Icon(Icons.cancel, color: Colors.grey.shade400, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+            const SizedBox(width: 5),
           ],
         ),
       ),
     );
   }
 
-  // --- Widget Keypad และ Footer (คงเดิมตาม Logic เดิมของคุณ) ---
   Widget _buildSymmetricKeypad() {
     return Container(
       padding: const EdgeInsets.all(15),
