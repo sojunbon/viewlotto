@@ -20,8 +20,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
 
   int _countPerNum = 5000;
   int _payPercent = 10;
-  double _userDiscountPercent =
-      0.0; // ✅ เปลี่ยนเป็น double เพื่อรองรับค่าอย่าง 1.5%
+  double _userDiscountPercent = 0.0;
   int _activeFieldIndex = 0;
   bool _showKeypad = true;
 
@@ -41,8 +40,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
 
   Future<void> _loadInitialData() async {
     debugPrint("🚀 [Debug] เริ่มโหลดข้อมูล Initial Data...");
-
-    // 1. ดึง Config ลดหลั่นราคา
     try {
       final payrateDoc = await _db.collection('configs').doc('payrate').get();
       if (payrateDoc.exists) {
@@ -50,47 +47,31 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           _countPerNum = (payrateDoc.data()?['countpernum'] ?? 5000).toInt();
           _payPercent = (payrateDoc.data()?['pay_percent'] ?? 10).toInt();
         });
-        debugPrint("✅ [Debug] โหลด Config ลดหลั่นสำเร็จ: $_countPerNum");
       }
     } catch (e) {
       debugPrint("🚨 [Debug] ดึง Config ผิดพลาด: $e");
     }
 
-    // 2. ดึงส่วนลดของผู้ใช้ (custdiscount) และเช็ควันหมดอายุ
     final User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      debugPrint("🔍 [Debug] กำลังตรวจสอบส่วนลดของ UID: ${user.uid}");
       try {
         final userDoc = await _db.collection('users').doc(user.uid).get();
         if (userDoc.exists) {
           var userData = userDoc.data()!;
           Timestamp? expire = userData['expire_discount'];
-
-          // ✅ ดึงค่าเป็น double เสมอเพื่อป้องกัน Error กรณีมีทศนิยม
           double discount = (userData['custdiscount'] ?? 0.0).toDouble();
-
-          debugPrint(
-            "📋 [Debug] ข้อมูลใน DB -> ส่วนลด: $discount%, หมดอายุ: ${expire?.toDate()}",
-          );
 
           if (expire != null && expire.toDate().isAfter(DateTime.now())) {
             setState(() {
               _userDiscountPercent = discount;
             });
             debugPrint("💰 [Debug] ยืนยันการใช้ส่วนลด: $_userDiscountPercent%");
-          } else {
-            debugPrint(
-              "❌ [Debug] ส่วนลดหมดอายุแล้ว หรือ expire_discount ไม่มีค่า",
-            );
           }
-        } else {
-          debugPrint("❌ [Debug] ไม่พบ Document ใน collection 'users'");
         }
       } catch (e) {
         debugPrint("🚨 [Debug] ดึงข้อมูล User ผิดพลาด: $e");
       }
     }
-
     _loadBaseRates();
   }
 
@@ -146,6 +127,154 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     return {"rate": finalRate, "isDiscounted": finalRate < base};
   }
 
+  // ✅ ฟังก์ชันส่งโพยที่บันทึกยอดสุทธิและส่วนลดลง Firestore
+  /*
+  Future<void> _submitBetsToFirebase() async {
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    double grandTotal = 0;
+    priceControllers.values.forEach(
+      (c) => grandTotal += double.tryParse(c.text) ?? 0,
+    );
+
+    if (grandTotal <= 0) return;
+
+    double totalDiscount = (grandTotal * _userDiscountPercent) / 100;
+    double netPay = grandTotal - totalDiscount;
+
+    WriteBatch batch = _db.batch();
+    String billId = "BILL-${DateTime.now().millisecondsSinceEpoch}";
+
+    try {
+      // 1. บันทึกหัวโพยลงคอลเลกชัน 'bills' เพื่อใช้ทำรายงาน
+      DocumentReference billRef = _db.collection('bills').doc(billId);
+      batch.set(billRef, {
+        'billId': billId,
+        'uid': user.uid,
+        'total_price': grandTotal,
+        'total_discount': totalDiscount,
+        'net_pay': netPay,
+        'discount_percent': _userDiscountPercent,
+        'timestamp': FieldValue.serverTimestamp(),
+        'status': 'pending',
+      });
+
+      // 2. บันทึกรายการตัวเลขลงคอลเลกชัน 'bets'
+      for (int i = 0; i < widget.draftBets.length; i++) {
+        double amount = double.tryParse(priceControllers[i]!.text) ?? 0;
+        if (amount <= 0) continue;
+
+        var rateInfo = _getRateInfo(i);
+        var bet = widget.draftBets[i];
+
+        DocumentReference betRef = _db.collection('bets').doc();
+        batch.set(betRef, {
+          'uid': user.uid,
+          'billId': billId,
+          'number': bet['num'],
+          'category': bet['cat'],
+          'lotto_key': bet['lottoKey'],
+          'price_bet': amount,
+          'rate_pay': rateInfo['rate'],
+          'total_pay': amount * rateInfo['rate'],
+          'timestamp': FieldValue.serverTimestamp(),
+          'status': 'pending',
+        });
+      }
+
+      await batch.commit();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      debugPrint("🚨 Error: $e");
+    }
+  }
+  */
+
+  Future<void> _submitBetsToFirebase() async {
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    double grandTotal = 0;
+    priceControllers.values.forEach(
+      (c) => grandTotal += double.tryParse(c.text) ?? 0,
+    );
+
+    if (grandTotal <= 0) return;
+
+    double totalDiscount = (grandTotal * _userDiscountPercent) / 100;
+    double netPay =
+        grandTotal - totalDiscount; // ยอดสุทธิที่ต้องหักออกจากเครดิต
+
+    WriteBatch batch = _db.batch();
+    String billId = "BILL-${DateTime.now().millisecondsSinceEpoch}";
+
+    try {
+      // 1. ดึงข้อมูลเครดิตล่าสุดมาตรวจสอบก่อนหัก
+      final userRef = _db.collection('users').doc(user.uid);
+      final userSnap = await userRef.get();
+      double currentCredit = (userSnap.data()?['credit'] ?? 0.0).toDouble();
+
+      if (currentCredit < netPay) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: Colors.red,
+              content: Text("เครดิตไม่เพียงพอ"),
+            ),
+          );
+        }
+        return;
+      }
+
+      // 2. ⚡️ เพิ่มคำสั่งตัดยอดเงินในคอลเลกชัน users
+      batch.update(userRef, {
+        'credit': FieldValue.increment(-netPay), // หักยอดสุทธิออกจากเครดิตเดิม
+      });
+
+      // 3. บันทึกหัวโพยลงคอลเลกชัน 'bills'
+      DocumentReference billRef = _db.collection('bills').doc(billId);
+      batch.set(billRef, {
+        'billId': billId,
+        'uid': user.uid,
+        'total_price': grandTotal,
+        'total_discount': totalDiscount,
+        'net_pay': netPay,
+        'discount_percent': _userDiscountPercent,
+        'timestamp': FieldValue.serverTimestamp(),
+        'status': 'pending',
+      });
+
+      // 4. บันทึกรายการตัวเลขลงคอลเลกชัน 'bets'
+      for (int i = 0; i < widget.draftBets.length; i++) {
+        double amount = double.tryParse(priceControllers[i]!.text) ?? 0;
+        if (amount <= 0) continue;
+
+        var rateInfo = _getRateInfo(i);
+        var bet = widget.draftBets[i];
+
+        DocumentReference betRef = _db.collection('bets').doc();
+        batch.set(betRef, {
+          'uid': user.uid,
+          'billId': billId,
+          'number': bet['num'],
+          'category': bet['cat'],
+          'lotto_key': bet['lottoKey'],
+          'price_bet': amount,
+          'rate_pay': rateInfo['rate'],
+          'total_pay': amount * rateInfo['rate'],
+          'timestamp': FieldValue.serverTimestamp(),
+          'status': 'pending',
+        });
+      }
+
+      await batch.commit();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      debugPrint("🚨 Error: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     Map<String, List<int>> groupedIndices = {};
@@ -188,7 +317,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     for (int idx in indices) {
       categoryTotal += double.tryParse(priceControllers[idx]!.text) ?? 0;
     }
-    // ✅ คำนวณส่วนลด % ของกลุ่มนี้
     double discountAmount = (categoryTotal * _userDiscountPercent) / 100;
 
     return Card(
@@ -333,7 +461,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                     ),
                   ),
                   child: Text(
-                    "ส่วนลด ${discountAmount.toStringAsFixed(2)}", // ✅ แสดงทศนิยม 2 ตำแหน่งเพื่อให้เห็นค่า % ที่ชัดเจน
+                    "ส่วนลด ${discountAmount.toStringAsFixed(2)}",
                     style: const TextStyle(
                       color: Colors.grey,
                       fontWeight: FontWeight.bold,
@@ -591,8 +719,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     priceControllers.values.forEach(
       (c) => grandTotal += double.tryParse(c.text) ?? 0,
     );
-
-    // ✅ คำนวณส่วนลดรวมตามเปอร์เซ็นต์จริง
     double totalDiscount = (grandTotal * _userDiscountPercent) / 100;
     double netPay = grandTotal - totalDiscount;
 
@@ -648,7 +774,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           ),
           const SizedBox(height: 15),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: _submitBetsToFirebase,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               minimumSize: const Size(double.infinity, 55),
