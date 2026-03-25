@@ -14,7 +14,6 @@ class PriceInputScreen extends StatefulWidget {
 
 class _PriceInputScreenState extends State<PriceInputScreen> {
   final _db = FirebaseFirestore.instance;
-
   Map<int, TextEditingController> priceControllers = {};
   Map<String, Map<String, double>> _allBasePayRates = {};
   Map<String, double> _accumulatedPayoutMap = {};
@@ -23,7 +22,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   int _payPercent = 10;
   double _userDiscountPercent = 0.0;
   int _activeFieldIndex = 0;
-  bool _showKeypad = true;
+  bool _showKeypad = true; // ✅ เริ่มต้นให้เปิดแป้นพิมพ์ไว้เสมอ
 
   @override
   void initState() {
@@ -49,25 +48,20 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         });
       }
     } catch (e) {
-      debugPrint("🚨 [Debug] ดึง Config ผิดพลาด: $e");
+      debugPrint("🚨 Config Error: $e");
     }
 
     final User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      try {
-        final userDoc = await _db.collection('users').doc(user.uid).get();
-        if (userDoc.exists) {
-          var userData = userDoc.data()!;
-          Timestamp? expire = userData['expire_discount'];
-          double discount = (userData['custdiscount'] ?? 0.0).toDouble();
-          if (expire != null && expire.toDate().isAfter(DateTime.now())) {
-            setState(() => _userDiscountPercent = discount);
-          }
+      final userDoc = await _db.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        double discount = (userDoc.data()?['custdiscount'] ?? 0.0).toDouble();
+        Timestamp? expire = userDoc.data()?['expire_discount'];
+        if (expire != null && expire.toDate().isAfter(DateTime.now())) {
+          setState(() => _userDiscountPercent = discount);
         }
-        await _fetchTotalPayoutRisk();
-      } catch (e) {
-        debugPrint("🚨 [Debug] ดึงข้อมูล User/Payout ผิดพลาด: $e");
       }
+      await _fetchTotalPayoutRisk();
     }
     _loadBaseRates();
   }
@@ -87,9 +81,8 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       for (var doc in snap.docs) {
         totalRisk += (doc.data()['total_pay'] ?? 0).toDouble();
       }
-      _accumulatedPayoutMap[mapKey] = totalRisk;
+      setState(() => _accumulatedPayoutMap[mapKey] = totalRisk);
     }
-    setState(() {});
   }
 
   Future<void> _loadBaseRates() async {
@@ -123,8 +116,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     if (index >= widget.draftBets.length)
       return {"rate": 0, "isDiscounted": false, "isClosed": false};
     var bet = widget.draftBets[index];
-
-    // ✅ ดึงราคาที่กำลังพิมพ์อยู่ในช่องนี้มาคำนวณ Real-time
     double input = double.tryParse(priceControllers[index]?.text ?? "") ?? 0;
 
     String cat = (bet['cat'] ?? "").replaceAll(RegExp(r'\s+'), "");
@@ -144,19 +135,15 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
     double accumulatedRisk = _accumulatedPayoutMap[mapKey] ?? 0;
 
-    // ✅ คำนวณความเสี่ยงรวม (ยอดจ่ายสะสมเดิม + ยอดจ่ายที่กำลังพิมพ์)
+    // ✅ คำนวณความเสี่ยง Real-time (สะสมเดิม + (ราคาที่คีย์ x เรทพื้นฐาน))
     double totalPotentialRisk = accumulatedRisk + (input * base);
-
-    // ✅ คิดขั้นบันไดตามยอดรวมความเสี่ยง
     int steps = totalPotentialRisk > 0
         ? (totalPotentialRisk / _countPerNum).floor()
         : 0;
     int finalRate = (base * (1 - (steps * _payPercent / 100))).round();
 
-    if (finalRate <= 0 && totalPotentialRisk > 0) {
+    if (finalRate <= 0 && totalPotentialRisk > 0)
       return {"rate": 0, "isDiscounted": true, "isClosed": true};
-    }
-
     return {
       "rate": finalRate,
       "isDiscounted": finalRate < base,
@@ -167,82 +154,59 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   Future<void> _submitBetsToFirebase() async {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
-    double grandTotal = 0;
+    double total = 0;
     priceControllers.values.forEach(
-      (c) => grandTotal += double.tryParse(c.text) ?? 0,
+      (c) => total += double.tryParse(c.text) ?? 0,
     );
-    if (grandTotal <= 0) return;
+    if (total <= 0) return;
 
-    for (int i = 0; i < widget.draftBets.length; i++) {
-      if (_getRateInfo(i)['isClosed']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("มีเลขที่ปิดรับแทงแล้วในรายการ")),
-        );
-        return;
-      }
-    }
-
-    double totalDiscount = (grandTotal * _userDiscountPercent) / 100;
-    double netPay = grandTotal - totalDiscount;
+    double disc = (total * _userDiscountPercent) / 100;
+    double netPay = total - disc;
 
     WriteBatch batch = _db.batch();
-    String billId = "BILL-${DateTime.now().millisecondsSinceEpoch}";
-
     try {
       final userRef = _db.collection('users').doc(user.uid);
       final userSnap = await userRef.get();
       double currentCredit = (userSnap.data()?['credit'] ?? 0.0).toDouble();
 
       if (currentCredit < netPay) {
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              backgroundColor: Colors.red,
-              content: Text("เครดิตไม่เพียงพอ"),
-            ),
-          );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("เครดิตไม่เพียงพอ")));
         return;
       }
 
+      // ✅ ตัดยอดเงินจริง
       batch.update(userRef, {'credit': FieldValue.increment(-netPay)});
 
-      DocumentReference billRef = _db.collection('bills').doc(billId);
-      batch.set(billRef, {
+      String billId = "BILL-${DateTime.now().millisecondsSinceEpoch}";
+      batch.set(_db.collection('bills').doc(billId), {
         'billId': billId,
         'uid': user.uid,
-        'total_price': grandTotal,
-        'total_discount': totalDiscount,
         'net_pay': netPay,
-        'discount_percent': _userDiscountPercent,
         'timestamp': FieldValue.serverTimestamp(),
         'status': 'pending',
       });
 
       for (int i = 0; i < widget.draftBets.length; i++) {
-        double amount = double.tryParse(priceControllers[i]!.text) ?? 0;
-        if (amount <= 0) continue;
-        var rateInfo = _getRateInfo(i);
-        var bet = widget.draftBets[i];
-        DocumentReference betRef = _db.collection('bets').doc();
-        batch.set(betRef, {
+        double amt = double.tryParse(priceControllers[i]!.text) ?? 0;
+        if (amt <= 0) continue;
+        var r = _getRateInfo(i);
+        batch.set(_db.collection('bets').doc(), {
           'uid': user.uid,
           'billId': billId,
-          'number': bet['num'],
-          'category': bet['cat'],
-          'lotto_key': bet['lottoKey'],
-          'price_bet': amount,
-          'rate_pay': rateInfo['rate'],
-          'total_pay': amount * rateInfo['rate'],
-          'timestamp': FieldValue.serverTimestamp(),
+          'number': widget.draftBets[i]['num'],
+          'price_bet': amt,
+          'rate_pay': r['rate'],
+          'total_pay': amt * r['rate'],
           'status': 'pending',
+          'timestamp': FieldValue.serverTimestamp(),
         });
       }
-
       await batch.commit();
-      if (mounted) Navigator.pop(context);
+      Navigator.pop(context);
     } catch (e) {
-      debugPrint("🚨 Error: $e");
+      debugPrint("🚨 Submit Error: $e");
     }
   }
 
@@ -256,42 +220,37 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF0F2F5),
       appBar: AppBar(
-        title: const Text("ระบุราคา", style: TextStyle(color: Colors.white)),
+        title: const Text("ระบุราคา"),
         backgroundColor: kMainGreen,
         centerTitle: true,
-        elevation: 0,
       ),
-      body: widget.draftBets.isEmpty
-          ? const Center(child: Text("ไม่มีรายการแทง"))
-          : Column(
-              children: [
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.all(12),
-                    children: groupedIndices.entries
-                        .map((e) => _buildCategoryCard(e.key, e.value))
-                        .toList(),
-                  ),
-                ),
-                _showKeypad ? _buildSymmetricKeypad() : _buildSummaryFooter(),
-              ],
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(12),
+              children: groupedIndices.entries
+                  .map((e) => _buildCategoryCard(e.key, e.value))
+                  .toList(),
             ),
+          ),
+          _showKeypad ? _buildSymmetricKeypad() : _buildSummaryFooter(),
+        ],
+      ),
     );
   }
 
   Widget _buildCategoryCard(String category, List<int> indices) {
-    double total = 0;
+    double sum = 0;
     indices.forEach(
-      (idx) => total += double.tryParse(priceControllers[idx]!.text) ?? 0,
+      (idx) => sum += double.tryParse(priceControllers[idx]!.text) ?? 0,
     );
-    double discount = (total * _userDiscountPercent) / 100;
     return Card(
       margin: const EdgeInsets.only(bottom: 20),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
         side: const BorderSide(color: kMainGreen, width: 1.5),
       ),
-      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           Padding(
@@ -305,98 +264,12 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
               ),
             ),
           ),
-          Container(
-            color: kMainGreen,
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: const Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: Center(
-                    child: Text(
-                      "รายการ",
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Center(
-                    child: Text(
-                      "ราคา",
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Center(
-                    child: Text(
-                      "เรท",
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 3,
-                  child: Center(
-                    child: Text(
-                      "ยอดจ่าย",
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 40),
-              ],
-            ),
-          ),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: indices.length,
-            separatorBuilder: (c, i) => const Divider(height: 1),
-            itemBuilder: (c, i) => _buildPriceRow(indices[i]),
-          ),
-          const SizedBox(height: 15),
+          ...indices.map((i) => _buildPriceRow(i)).toList(),
           Padding(
-            padding: const EdgeInsets.only(bottom: 15),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 8,
-                  ),
-                  decoration: const BoxDecoration(
-                    color: kMainGreen,
-                    borderRadius: BorderRadius.horizontal(
-                      left: Radius.circular(30),
-                    ),
-                  ),
-                  child: Text(
-                    "รวม ${total.toStringAsFixed(0)}",
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: kMainGreen),
-                    borderRadius: const BorderRadius.horizontal(
-                      right: Radius.circular(30),
-                    ),
-                  ),
-                  child: Text(
-                    "ส่วนลด ${discount.toStringAsFixed(2)}",
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                ),
-              ],
+            padding: const EdgeInsets.all(15),
+            child: Text(
+              "รวมกลุ่ม: ${sum.toStringAsFixed(0)} บ.",
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -405,79 +278,75 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   }
 
   Widget _buildPriceRow(int index) {
-    var rateInfo = _getRateInfo(index);
-    bool isClosed = rateInfo['isClosed'];
-    bool isDiscounted =
-        rateInfo['isDiscounted']; // ✅ สำหรับแจ้งเตือนเลขอั้น (Tier 1 ขึ้นไป)
-    bool isActive = _activeFieldIndex == index && _showKeypad;
+    var r = _getRateInfo(index);
+    bool active = _activeFieldIndex == index && _showKeypad;
+    bool red = r['isDiscounted'] || r['isClosed'];
 
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 5),
-      color: isActive ? kMainGreen.withOpacity(0.08) : Colors.transparent,
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Center(
+    return InkWell(
+      onTap: () => setState(() {
+        _activeFieldIndex = index;
+        _showKeypad = true;
+      }), // ✅ จิ้มแล้วแป้นต้องเด้ง
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        color: active ? kMainGreen.withOpacity(0.1) : Colors.transparent,
+        child: Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: Center(
+                child: Text(
+                  widget.draftBets[index]['num']!,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            Container(
+              width: 70,
+              height: 38,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: red
+                      ? Colors.red
+                      : (active ? kMainGreen : Colors.grey.shade300),
+                  width: red ? 2.5 : 1.5,
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  r['isClosed'] ? "เต็ม" : priceControllers[index]!.text,
+                  style: TextStyle(color: red ? Colors.red : Colors.black),
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Center(
+                child: Text(
+                  "x${r['rate']}",
+                  style: TextStyle(color: red ? Colors.red : Colors.black),
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 3,
               child: Text(
-                widget.draftBets[index]['num']!,
-                style: const TextStyle(
-                  fontSize: 18,
+                "${((double.tryParse(priceControllers[index]!.text) ?? 0) * r['rate']).toStringAsFixed(0)} บ.",
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: red ? Colors.red : Colors.black,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-          ),
-          Container(
-            width: 70,
-            height: 38,
-            decoration: BoxDecoration(
-              color: isClosed ? Colors.grey.shade200 : Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              // ✅ ใส่กรอบแดงทันทีหากเป็นเลขอั้นหรือเต็ม
-              border: Border.all(
-                color: isClosed || isDiscounted
-                    ? Colors.red
-                    : (isActive ? kMainGreen : Colors.grey.shade300),
-                width: isClosed || isDiscounted ? 2.5 : 1.5,
-              ),
-            ),
-            child: Center(
-              child: Text(
-                isClosed ? "เต็ม" : priceControllers[index]!.text,
-                style: TextStyle(
-                  color: isClosed || isDiscounted ? Colors.red : Colors.black,
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Center(
-              child: Text(
-                "x${rateInfo['rate']}",
-                style: TextStyle(
-                  color: isClosed || isDiscounted ? Colors.red : Colors.black,
-                  fontWeight: isClosed || isDiscounted
-                      ? FontWeight.bold
-                      : FontWeight.normal,
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              "${((double.tryParse(priceControllers[index]!.text) ?? 0) * rateInfo['rate']).toStringAsFixed(0)} บ.",
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: isClosed || isDiscounted ? Colors.red : Colors.black,
-              ),
-            ),
-          ),
-          const SizedBox(width: 40),
-        ],
+            const SizedBox(width: 40),
+          ],
+        ),
       ),
     );
   }
@@ -526,18 +395,8 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: kMainGreen,
               minimumSize: const Size(double.infinity, 55),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
             ),
-            child: const Text(
-              "ตกลง",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            child: const Text("ตกลง", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -553,7 +412,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       ),
       child: Center(
         child: isIcon
-            ? const Icon(Icons.backspace, size: 22)
+            ? const Icon(Icons.backspace)
             : Text(
                 k,
                 style: const TextStyle(
@@ -564,12 +423,10 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       ),
     ),
   );
-
   Widget _qBtn(String l, int v) => InkWell(
     onTap: () => setState(() {
       for (var c in priceControllers.values) {
-        int current = int.tryParse(c.text) ?? 0;
-        c.text = (current + v).toString();
+        c.text = ((int.tryParse(c.text) ?? 0) + v).toString();
       }
     }),
     child: Container(
@@ -592,7 +449,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   );
 
   void _onKeypadPress(String k) {
-    if (widget.draftBets.isEmpty) return;
     String cur = priceControllers[_activeFieldIndex]!.text;
     if (k == "del") {
       if (cur.isNotEmpty)
@@ -603,7 +459,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     } else {
       if (cur.length < 6) priceControllers[_activeFieldIndex]!.text = cur + k;
     }
-    setState(() {}); // ✅ สั่งคำนวณ rateInfo ใหม่ทันทีที่พิมพ์
+    setState(() {}); // ✅ บังคับคำนวณเรทและสีแดงทันที
   }
 
   Widget _buildSummaryFooter() {
@@ -611,22 +467,18 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     priceControllers.values.forEach(
       (c) => total += double.tryParse(c.text) ?? 0,
     );
-    double disc = (total * _userDiscountPercent) / 100;
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
-      ),
+      color: Colors.white,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("ยอดสุทธิที่ต้องจ่าย:"),
+              const Text("ยอดสุทธิ:"),
               Text(
-                "${(total - disc).toStringAsFixed(2)} บาท",
+                "${total.toStringAsFixed(0)} บ.",
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -641,15 +493,11 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               minimumSize: const Size(double.infinity, 55),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
             ),
             child: const Text(
               "ยืนยันส่งโพย",
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
