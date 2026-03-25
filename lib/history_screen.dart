@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // อย่าลืมเพิ่ม intl: ^0.18.1 ใน pubspec.yaml
 
+// หน้าจอประวัติการแทงหวย
 class HistoryScreen extends StatelessWidget {
   const HistoryScreen({super.key});
 
