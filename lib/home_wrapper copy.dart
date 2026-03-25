@@ -281,7 +281,7 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
       return false;
     }
   }
-  
+  */
 
   bool _isLottoOpen(Map<String, dynamic> data) {
     try {
@@ -358,118 +358,6 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
       }
     } catch (e) {
       return false;
-    }
-  }
-*/
-
-  bool _isLottoOpen(Map<String, dynamic> data) {
-    try {
-      final now = DateTime.now();
-      final todayMidnight = DateTime(now.year, now.month, now.day);
-      String lottoName = data['lottoname'] ?? 'Unknown';
-
-      // 🛑 DEBUG 1: เช็ค Master Switch
-      if (data['lottostatus'] == false) {
-        debugPrint("❌ [$lottoName] ปิดเพราะ lottostatus = false");
-        return false;
-      }
-
-      String? specificDatesStr = data['specificDates'];
-
-      // ✅ เคสที่ 1: หวยรัฐบาล
-      if (specificDatesStr != null && specificDatesStr.trim().isNotEmpty) {
-        List<int> openDates = specificDatesStr
-            .split(',')
-            .map((e) => int.tryParse(e.trim()) ?? 0)
-            .where((e) => e > 0)
-            .toList();
-        int preOpenDays = data['preOpenDays'] ?? 0;
-
-        for (int day in openDates) {
-          DateTime targetDate = DateTime(now.year, now.month, day);
-          if (todayMidnight.isAfter(targetDate))
-            targetDate = DateTime(now.year, now.month + 1, day);
-
-          int diffDays = targetDate.difference(todayMidnight).inDays;
-          if (diffDays == 0) return _checkTime(data, now, lottoName);
-          if (diffDays > 0 && diffDays <= preOpenDays) return true;
-        }
-        return false;
-      }
-      // ✅ เคสที่ 2: หวยลาว / ฮานอย (เช็ค playDays)
-      else {
-        var rawPlayDays = data['playDays'];
-        List<int> playDays = [];
-        if (rawPlayDays is List) {
-          playDays = rawPlayDays
-              .map((e) => int.tryParse(e.toString()) ?? 0)
-              .toList();
-        }
-
-        // 🛑 DEBUG 2: เช็คข้อมูลวัน
-        debugPrint("------------------------------------------");
-        debugPrint("🔍 ตรวจสอบหวย: $lottoName");
-        debugPrint(
-          "⏰ เวลาเครื่องตอนนี้: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(now)} (วันในสัปดาห์: ${now.weekday})",
-        );
-        debugPrint("📅 PlayDays จาก DB: $playDays");
-
-        if (playDays.contains(now.weekday)) {
-          return _checkTime(data, now, lottoName);
-        } else {
-          debugPrint(
-            "🚫 [$lottoName] ปิดเพราะวันนี้ (${now.weekday}) ไม่อยู่ใน PlayDays $playDays",
-          );
-          return false;
-        }
-      }
-    } catch (e) {
-      debugPrint("🚨 Error ใน _isLottoOpen: $e");
-      return false;
-    }
-  }
-
-  bool _checkTime(Map<String, dynamic> data, DateTime now, String name) {
-    try {
-      final DateFormat tf = DateFormat('HH:mm');
-      String openStr = (data['openTime'] ?? "00:01").toString();
-      String closeStr = (data['closeTime'] ?? "23:59").toString();
-
-      DateTime oT = tf.parse(openStr);
-      DateTime cT = tf.parse(closeStr);
-
-      DateTime openToday = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        oT.hour,
-        oT.minute,
-      );
-      DateTime closeToday = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        cT.hour,
-        cT.minute,
-      );
-
-      // 🛑 DEBUG 3: เช็คช่วงเวลา
-      bool isOpen = now.isAfter(openToday) && now.isBefore(closeToday);
-
-      debugPrint("🕒 ช่วงเวลาเปิดรับ: $openStr - $closeStr");
-      if (!isOpen) {
-        debugPrint(
-          "🚫 [$name] ปิดเพราะอยู่นอกช่วงเวลา (ตอนนี้ ${DateFormat('HH:mm').format(now)})",
-        );
-      } else {
-        debugPrint("✅ [$name] เปิดรับแทงปกติ!");
-      }
-      debugPrint("------------------------------------------");
-
-      return isOpen;
-    } catch (e) {
-      debugPrint("🚨 Error ใน _checkTime: $e");
-      return true;
     }
   }
 

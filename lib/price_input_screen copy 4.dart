@@ -19,10 +19,10 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   Map<int, TextEditingController> priceControllers = {};
   Map<String, Map<String, double>> _allBasePayRates = {};
 
-  // ✅ ดึงจาก Firebase configs/payrate
-  int _countPerNum = 5000;
-  int _payPercent = 10;
-  int _activeFieldIndex = 0;
+  double _userCredit = 0;
+  int _countPerNum = 5000; // จาก Firebase
+  int _payPercent = 10; // จาก Firebase
+  int? _activeFieldIndex; // เก็บ index ของแถวที่กำลังถูกเลือกกรอก
 
   @override
   void initState() {
@@ -34,7 +34,9 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   }
 
   Future<void> _loadInitialData() async {
+    final userDoc = await _db.collection('users').doc(_user?.uid).get();
     final payrateDoc = await _db.collection('configs').doc('payrate').get();
+
     if (payrateDoc.exists) {
       setState(() {
         _countPerNum = (payrateDoc.data()?['countpernum'] ?? 5000).toInt();
@@ -66,19 +68,26 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         });
       }
     }
+    if (mounted)
+      setState(() => _userCredit = (userDoc.data()?['credit'] ?? 0).toDouble());
   }
 
-  int _calculateStepRate(int index, double inputAmount) {
+  int _calculateStepRate(
+    int index,
+    double inputAmount,
+    double totalAlreadyBet,
+  ) {
     var bet = widget.draftBets[index];
     String cat = (bet['cat'] ?? "").replaceAll(RegExp(r'\s+'), "");
     String fieldKey = "";
     if (cat.contains("สี่ตัว"))
       fieldKey = "digit4";
-    else if (cat.contains("สามตัว") && !cat.contains("โต๊ด"))
+    else if ((cat.contains("สามตัว") || cat.contains("3ตัว")) &&
+        !cat.contains("โต๊ด"))
       fieldKey = "digit3";
     else if (cat.contains("โต๊ด"))
       fieldKey = "swift";
-    else if (cat.contains("สองตัว"))
+    else if (cat.contains("สองตัว") || cat.contains("2ตัว"))
       fieldKey = "digit2";
     else if (cat.contains("วิ่ง"))
       fieldKey = "digit1";
@@ -86,40 +95,35 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     double baseRate = _allBasePayRates[bet['lottoKey']]?[fieldKey] ?? 0;
     if (baseRate <= 0) return 0;
 
-    int steps = inputAmount > 0
-        ? ((inputAmount - 0.01) / _countPerNum).floor()
+    double totalAmount = totalAlreadyBet + inputAmount;
+    int steps = totalAmount > 0
+        ? ((totalAmount - 0.01) / _countPerNum).floor()
         : 0;
     return (baseRate * (1 - (steps * _payPercent / 100))).round();
   }
 
-  void _addAllPrices(int value) {
-    setState(() {
-      for (var controller in priceControllers.values) {
-        int current = int.tryParse(controller.text) ?? 0;
-        controller.text = (current + value).toString();
-      }
-    });
-  }
-
   void _onKeypadPress(String key) {
-    String current = priceControllers[_activeFieldIndex]!.text;
+    if (_activeFieldIndex == null) return;
+    String current = priceControllers[_activeFieldIndex!]!.text;
     setState(() {
       if (key == "del") {
         if (current.isNotEmpty)
-          priceControllers[_activeFieldIndex]!.text = current.substring(
+          priceControllers[_activeFieldIndex!]!.text = current.substring(
             0,
             current.length - 1,
           );
+      } else if (key.startsWith("+")) {
+        int val = int.parse(key.substring(1));
+        priceControllers[_activeFieldIndex!]!.text =
+            ((int.tryParse(current) ?? 0) + val).toString();
       } else {
-        if (current.length < 6)
-          priceControllers[_activeFieldIndex]!.text = current + key;
+        priceControllers[_activeFieldIndex!]!.text = current + key;
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // ✅ นำตัวจัดกลุ่มกลับมา
     Map<String, List<int>> groupedIndices = {};
     for (int i = 0; i < widget.draftBets.length; i++) {
       String cat = widget.draftBets[i]['cat']!;
@@ -128,26 +132,28 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF0F2F5),
       appBar: AppBar(
         title: const Text(
           "ระบุราคา",
           style: TextStyle(color: Colors.white, fontSize: 16),
         ),
         backgroundColor: kMainGreen,
-        centerTitle: true,
       ),
       body: Column(
         children: [
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(8),
               children: groupedIndices.entries
                   .map((e) => _buildCategoryCard(e.key, e.value))
                   .toList(),
             ),
           ),
-          _buildSymmetricKeypad(),
+          if (_activeFieldIndex != null)
+            _buildCustomKeypad(), // โชว์แป้นเฉพาะตอนเลือกแถว
+          if (_activeFieldIndex == null)
+            _buildSummaryFooter(), // โชว์สรุปยอดถ้าไม่ได้เลือกแถว
         ],
       ),
     );
@@ -156,15 +162,15 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   Widget _buildCategoryCard(String category, List<int> indices) {
     return Card(
       elevation: 0,
-      margin: const EdgeInsets.only(bottom: 15),
+      margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: kMainGreen.withOpacity(0.3)),
+        side: const BorderSide(color: kMainGreen, width: 1.5),
       ),
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8),
             child: Text(
               category,
               style: const TextStyle(
@@ -176,7 +182,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           ),
           Container(
             color: kMainGreen,
-            padding: const EdgeInsets.symmetric(vertical: 5),
+            padding: const EdgeInsets.symmetric(vertical: 4),
             child: const Row(
               children: [
                 Expanded(
@@ -184,7 +190,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                   child: Center(
                     child: Text(
                       "รายการ",
-                      style: TextStyle(color: Colors.white, fontSize: 12),
+                      style: TextStyle(color: Colors.white, fontSize: 11),
                     ),
                   ),
                 ),
@@ -193,7 +199,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                   child: Center(
                     child: Text(
                       "ราคา",
-                      style: TextStyle(color: Colors.white, fontSize: 12),
+                      style: TextStyle(color: Colors.white, fontSize: 11),
                     ),
                   ),
                 ),
@@ -202,7 +208,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                   child: Center(
                     child: Text(
                       "เรท",
-                      style: TextStyle(color: Colors.white, fontSize: 12),
+                      style: TextStyle(color: Colors.white, fontSize: 11),
                     ),
                   ),
                 ),
@@ -211,7 +217,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                   child: Center(
                     child: Text(
                       "ยอดจ่าย",
-                      style: TextStyle(color: Colors.white, fontSize: 12),
+                      style: TextStyle(color: Colors.white, fontSize: 11),
                     ),
                   ),
                 ),
@@ -227,14 +233,18 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
 
   Widget _buildPriceRow(int index) {
     bool isActive = _activeFieldIndex == index;
+    int rate = _calculateStepRate(
+      index,
+      double.tryParse(priceControllers[index]!.text) ?? 0,
+      0,
+    );
     double price = double.tryParse(priceControllers[index]!.text) ?? 0;
-    int rate = _calculateStepRate(index, price);
 
     return InkWell(
       onTap: () => setState(() => _activeFieldIndex = index),
       child: Container(
         color: isActive ? kMainGreen.withOpacity(0.05) : Colors.transparent,
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           children: [
             Expanded(
@@ -256,18 +266,20 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                   width: 70,
                   height: 35,
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(5),
                     border: Border.all(
                       color: isActive ? kMainGreen : Colors.grey.shade300,
                     ),
+                    borderRadius: BorderRadius.circular(5),
+                    color: Colors.white,
                   ),
                   child: Center(
                     child: Text(
-                      priceControllers[index]!.text,
+                      priceControllers[index]!.text.isEmpty
+                          ? "0"
+                          : priceControllers[index]!.text,
                       style: const TextStyle(
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: kMainGreen,
                       ),
                     ),
                   ),
@@ -289,8 +301,9 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                 child: Text(
                   "${(price * rate).toStringAsFixed(0)} บ.",
                   style: const TextStyle(
+                    fontSize: 13,
+                    color: kMainGreen,
                     fontWeight: FontWeight.bold,
-                    color: Colors.orange,
                   ),
                 ),
               ),
@@ -305,122 +318,93 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     );
   }
 
-  Widget _buildSymmetricKeypad() {
+  Widget _buildCustomKeypad() {
+    List<String> keys = [
+      "1",
+      "2",
+      "3",
+      "+1",
+      "4",
+      "5",
+      "6",
+      "+5",
+      "7",
+      "8",
+      "9",
+      "+10",
+      "0",
+      "del",
+      "ตกลง",
+      "+100",
+    ];
     return Container(
-      padding: const EdgeInsets.fromLTRB(15, 10, 15, 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
-      ),
+      padding: const EdgeInsets.all(8),
+      color: Colors.white,
       child: Column(
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 3,
-                child: GridView.count(
-                  shrinkWrap: true,
-                  crossAxisCount: 3,
-                  childAspectRatio: 1.6,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  children: [
-                    for (var i = 1; i <= 9; i++) _keyBtn(i.toString()),
-                    const SizedBox(),
-                    _keyBtn("0"),
-                    _keyBtn("del", isIcon: true),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 1,
-                child: Column(
-                  children: [
-                    _quickBtn("+1", 1),
-                    _quickBtn("+5", 5),
-                    _quickBtn("+10", 10),
-                    _quickBtn("+100", 100),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: kMainGreen,
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              childAspectRatio: 1.8,
+              mainAxisSpacing: 5,
+              crossAxisSpacing: 5,
             ),
-            child: const Text(
-              "ตกลง",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            itemCount: keys.length,
+            itemBuilder: (context, index) {
+              String k = keys[index];
+              bool isAction = k == "del" || k == "ตกลง" || k.startsWith("+");
+              return ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isAction ? kMainGreen : Colors.white,
+                  foregroundColor: isAction ? Colors.white : Colors.black,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                    side: BorderSide(color: Colors.grey.shade300),
+                  ),
+                ),
+                onPressed: () => k == "ตกลง"
+                    ? setState(() => _activeFieldIndex = null)
+                    : _onKeypadPress(k),
+                child: k == "del"
+                    ? const Icon(Icons.backspace_outlined, size: 18)
+                    : Text(
+                        k,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+              );
+            },
           ),
         ],
       ),
     );
   }
 
-  Widget _keyBtn(String label, {bool isIcon = false}) {
-    if (label == "") return const SizedBox();
-    return InkWell(
-      onTap: () => _onKeypadPress(label),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Center(
-          child: isIcon
-              ? const Icon(Icons.backspace_outlined, size: 20)
-              : Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-        ),
-      ),
+  Widget _buildSummaryFooter() {
+    double total = 0;
+    priceControllers.values.forEach(
+      (c) => total += double.tryParse(c.text) ?? 0,
     );
-  }
-
-  Widget _quickBtn(String label, int val) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: () => _addAllPrices(val),
-        child: Container(
-          height: 40,
-          decoration: BoxDecoration(
-            color: kMainGreen,
-            borderRadius: BorderRadius.circular(8),
+    return Container(
+      padding: const EdgeInsets.all(15),
+      color: Colors.white,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: kMainGreen,
+          minimumSize: const Size(double.infinity, 50),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30),
           ),
-          child: Center(
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+        ),
+        onPressed: () {},
+        child: Text(
+          "ตกลง (ยอดรวม ${total.toStringAsFixed(0)})",
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
           ),
         ),
       ),
