@@ -196,7 +196,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
       text: (data['preOpenDays'] ?? "0").toString(),
     );
 
-    // ราคาจ่าย
+    // --- ราคาจ่าย (Rate) ---
     TextEditingController d4 = TextEditingController(
       text: (data['digit4'] ?? "8000").toString(),
     );
@@ -213,7 +213,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
       text: (data['swift'] ?? "150").toString(),
     );
 
-    // ✅ เพิ่ม Controller สำหรับยอดแทงสูงสุด (Max Bet)
+    // ✅ --- ยอดแทงสูงสุด (Max Bet) ---
     TextEditingController m4 = TextEditingController(
       text: (data['maxdigit4'] ?? "100").toString(),
     );
@@ -225,6 +225,9 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
     );
     TextEditingController m1 = TextEditingController(
       text: (data['maxdigit1'] ?? "300").toString(),
+    );
+    TextEditingController mSwift = TextEditingController(
+      text: (data['maxswift'] ?? "500").toString(),
     );
 
     List<int> selectedDays = List<int>.from(
@@ -351,12 +354,13 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  // ✅ แสดง Row ราคาคู่กับ Max Bet
+
+                  // แสดงราคาจ่ายคู่กับ Max Bet แยกตามประเภท
                   _buildPriceMaxRow("4 ตัวบน", d4, m4),
                   _buildPriceMaxRow("3 ตัวบน", d3, m3),
                   _buildPriceMaxRow("2 ตัวบน", d2, m2),
                   _buildPriceMaxRow("วิ่งบน", d1, m1),
-                  _buildPriceField("โต๊ด (swift)", swiftController),
+                  _buildPriceMaxRow("โต๊ด (swift)", swiftController, mSwift),
                 ],
               ),
             ),
@@ -382,16 +386,20 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                   'playDays': selectedDays,
                   'specificDates': specificDatesController.text.trim(),
                   'preOpenDays': int.tryParse(preOpenDaysController.text) ?? 0,
+
                   'digit4': int.tryParse(d4.text) ?? 0,
                   'digit3': int.tryParse(d3.text) ?? 0,
                   'digit2': int.tryParse(d2.text) ?? 0,
                   'digit1': double.tryParse(d1.text) ?? 0.0,
                   'swift': int.tryParse(swiftController.text) ?? 0,
+
                   // ✅ บันทึกยอด Max Bet
                   'maxdigit4': int.tryParse(m4.text) ?? 0,
                   'maxdigit3': int.tryParse(m3.text) ?? 0,
                   'maxdigit2': int.tryParse(m2.text) ?? 0,
                   'maxdigit1': int.tryParse(m1.text) ?? 0,
+                  'maxswift': int.tryParse(mSwift.text) ?? 0,
+
                   'lottostatus': currentStatus,
                 };
                 final col = _db
@@ -414,7 +422,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
     );
   }
 
-  // ✅ เพิ่ม Widget ช่วยสร้างแถว ราคาจ่าย + ยอดสูงสุด
+  // ✅ Widget สร้างแถว ราคาจ่าย + ยอดสูงสุด
   Widget _buildPriceMaxRow(
     String label,
     TextEditingController pCtrl,
