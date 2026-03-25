@@ -196,7 +196,6 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
       text: (data['preOpenDays'] ?? "0").toString(),
     );
 
-    // --- ราคาจ่าย (Rate) ---
     TextEditingController d4 = TextEditingController(
       text: (data['digit4'] ?? "8000").toString(),
     );
@@ -213,7 +212,6 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
       text: (data['swift'] ?? "150").toString(),
     );
 
-    // ✅ --- ยอดแทงสูงสุด (Max Bet) ---
     TextEditingController m4 = TextEditingController(
       text: (data['maxdigit4'] ?? "100").toString(),
     );
@@ -245,23 +243,29 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
           ),
-          title: Text(isNew ? "เพิ่มหวยใหม่" : "แก้ไขข้อมูล"),
+          title: Text(
+            isNew ? "เพิ่มหวยใหม่" : "แก้ไขข้อมูล",
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
           content: SizedBox(
-            width: double.maxFinite,
+            width: MediaQuery.of(context).size.width * 0.9,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 10),
                   Row(
                     children: [
                       Expanded(
+                        flex: 1,
                         child: _buildTextField(
                           "ลำดับ",
                           numController,
                           isNum: true,
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         flex: 2,
                         child: _buildTextField("ชื่อหวย", nameController),
@@ -271,7 +275,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                   _buildTextField(
                     "ประเภท (ID)",
                     typeController,
-                    hint: "เช่น thai, lao, hanoy",
+                    hint: "เช่น thai, lao",
                   ),
                   Row(
                     children: [
@@ -282,7 +286,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                           hint: "06:00",
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: _buildTextField(
                           "เวลาปิด",
@@ -292,21 +296,27 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                       ),
                     ],
                   ),
-                  const Divider(),
-                  const Text(
-                    "วันเปิดรับแทง",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      "วันเปิดรับแทง",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
                   ),
                   Wrap(
-                    spacing: 4,
+                    spacing: 6,
+                    runSpacing: 4,
                     children: List.generate(7, (index) {
                       bool isSel = selectedDays.contains(index + 1);
                       return ChoiceChip(
                         label: Text(
                           _daysOfWeek[index],
                           style: TextStyle(
-                            color: isSel ? Colors.white : Colors.black,
-                            fontSize: 11,
+                            color: isSel ? Colors.white : Colors.black87,
+                            fontSize: 12,
                           ),
                         ),
                         selected: isSel,
@@ -321,17 +331,17 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                       );
                     }),
                   ),
+                  const SizedBox(height: 15),
                   _buildTextField(
                     "ระบุวันที่เปิด (เช่น 1,16)",
                     specificDatesController,
-                    hint: "เว้นว่างไว้หากใช้ จ-อา",
                   ),
                   _buildTextField(
                     "เปิดรับล่วงหน้า (วัน)",
                     preOpenDaysController,
                     isNum: true,
                   ),
-                  const Divider(),
+                  const Divider(height: 30),
                   _buildTextField(
                     "ลิงก์รูปธง",
                     linkController,
@@ -344,18 +354,15 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                       onPressed: () => _uploadImage(linkController),
                     ),
                   ),
-
                   const Text(
-                    "ตั้งค่าราคาจ่าย & ยอดแทงสูงสุด",
+                    "ตั้งค่าราคาจ่าย & ยอดสูงสุด",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                      fontSize: 14,
                       color: Color(0xFF1A3D5D),
                     ),
                   ),
-                  const SizedBox(height: 10),
-
-                  // แสดงราคาจ่ายคู่กับ Max Bet แยกตามประเภท
+                  const SizedBox(height: 15),
                   _buildPriceMaxRow("4 ตัวบน", d4, m4),
                   _buildPriceMaxRow("3 ตัวบน", d3, m3),
                   _buildPriceMaxRow("2 ตัวบน", d2, m2),
@@ -368,7 +375,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text("ยกเลิก"),
+              child: const Text("ยกเลิก", style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -386,20 +393,16 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
                   'playDays': selectedDays,
                   'specificDates': specificDatesController.text.trim(),
                   'preOpenDays': int.tryParse(preOpenDaysController.text) ?? 0,
-
                   'digit4': int.tryParse(d4.text) ?? 0,
                   'digit3': int.tryParse(d3.text) ?? 0,
                   'digit2': int.tryParse(d2.text) ?? 0,
                   'digit1': double.tryParse(d1.text) ?? 0.0,
                   'swift': int.tryParse(swiftController.text) ?? 0,
-
-                  // ✅ บันทึกยอด Max Bet
                   'maxdigit4': int.tryParse(m4.text) ?? 0,
                   'maxdigit3': int.tryParse(m3.text) ?? 0,
                   'maxdigit2': int.tryParse(m2.text) ?? 0,
                   'maxdigit1': int.tryParse(m1.text) ?? 0,
                   'maxswift': int.tryParse(mSwift.text) ?? 0,
-
                   'lottostatus': currentStatus,
                 };
                 final col = _db
@@ -422,14 +425,13 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
     );
   }
 
-  // ✅ Widget สร้างแถว ราคาจ่าย + ยอดสูงสุด
   Widget _buildPriceMaxRow(
     String label,
     TextEditingController pCtrl,
     TextEditingController mCtrl,
   ) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
           Expanded(flex: 2, child: _buildPriceField(label, pCtrl)),
@@ -438,11 +440,20 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
             child: TextField(
               controller: mCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: "Max (บ.)",
-                labelStyle: TextStyle(fontSize: 12, color: Colors.red),
-                isDense: true,
-                border: OutlineInputBorder(),
+                labelStyle: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
             ),
           ),
@@ -459,7 +470,7 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
     Widget? suffix,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 15),
       child: TextField(
         controller: controller,
         keyboardType: isNum ? TextInputType.number : TextInputType.text,
@@ -467,25 +478,28 @@ class _AdminLottoConfigState extends State<AdminLottoConfig> {
           labelText: label,
           hintText: hint,
           suffixIcon: suffix,
-          isDense: true,
-          border: const OutlineInputBorder(),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         ),
       ),
     );
   }
 
   Widget _buildPriceField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: controller,
-        keyboardType: TextInputType.number,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixText: "x ",
-          isDense: true,
-          border: const OutlineInputBorder(),
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixText: "x ",
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
         ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
