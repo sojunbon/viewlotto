@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-// หน้าจอสำหรับระบุราคาที่ต้องการแทง มีการคำนวณเรทจ่ายขั้นบันไดและแสดงยอดเงิน Real-time
 const Color kMainGreen = Color(0xFF11998E);
 
 class PriceInputScreen extends StatefulWidget {
@@ -27,7 +26,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   double _userDiscountPercent = 0.0;
   int _activeFieldIndex = 0;
   bool _showKeypad = true;
-  bool _isLoading = true; // ✅ เพิ่มตัวแปรสถานะการโหลด
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -43,19 +42,112 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     }
   }
 
-  // ✅ ฟังก์ชันแสดงยอดเงินแบบ Real-time บน AppBar
+  // ✅ ปรับปรุง Logic การโหลดให้ทำงานแบบขนาน (Parallel) เพื่อความเร็วสูงสุด
+  Future<void> _loadInitialData() async {
+    setState(() => _isLoading = true);
+    final User? user = FirebaseAuth.instance.currentUser;
+
+    try {
+      // 🚀 ใช้ Future.wait เพื่อดึงข้อมูลทุกอย่างพร้อมกัน
+      await Future.wait([
+        _fetchPayrateConfig(),
+        if (user != null) _fetchUserData(user.uid),
+        if (user != null) _fetchTotalPayoutRisk(),
+        _loadBaseRates(),
+      ]);
+    } catch (e) {
+      debugPrint("🚨 Load Data Error: $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _fetchPayrateConfig() async {
+    final doc = await _db.collection('configs').doc('payrate').get();
+    if (doc.exists) {
+      _countPerNum = (doc.data()?['countpernum'] ?? 95000).toInt();
+      _maxOver = (doc.data()?['maxover'] ?? 5000).toInt();
+      _payPercent = (doc.data()?['pay_percent'] ?? 10).toInt();
+    }
+  }
+
+  Future<void> _fetchUserData(String uid) async {
+    final userDoc = await _db.collection('users').doc(uid).get();
+    if (userDoc.exists) {
+      double discount = (userDoc.data()?['custdiscount'] ?? 0.0).toDouble();
+      Timestamp? expire = userDoc.data()?['expire_discount'];
+      if (expire != null && expire.toDate().isAfter(DateTime.now())) {
+        _userDiscountPercent = discount;
+      }
+    }
+  }
+
+  Future<void> _fetchTotalPayoutRisk() async {
+    // ใช้ Future.wait ภายในเพื่อเช็กยอดสะสมของเลขทุกตัวพร้อมกัน
+    List<Future> tasks = widget.draftBets.map((bet) async {
+      String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
+      final snap = await _db
+          .collection('bets')
+          .where('number', isEqualTo: bet['num'])
+          .where('category', isEqualTo: bet['cat'])
+          .where('lotto_key', isEqualTo: bet['lottoKey'])
+          .where('status', isEqualTo: 'pending')
+          .get();
+
+      double totalRisk = 0;
+      for (var doc in snap.docs) {
+        totalRisk += (doc.data()['total_pay'] ?? 0).toDouble();
+      }
+      _accumulatedPayoutMap[mapKey] = totalRisk;
+    }).toList();
+
+    await Future.wait(tasks);
+  }
+
+  Future<void> _loadBaseRates() async {
+    Set<String?> selectedKeys = widget.draftBets
+        .map((e) => e['lottoKey'])
+        .toSet();
+    List<Future> tasks = selectedKeys.map((key) async {
+      if (key == null) return;
+      final lottoSnap = await _db
+          .collection('configs')
+          .doc('lottogen')
+          .collection('lottogrid')
+          .where('lottotype', isEqualTo: key)
+          .get();
+
+      if (lottoSnap.docs.isNotEmpty) {
+        var lData = lottoSnap.docs.first.data();
+        _allBasePayRates[key] = {
+          'digit4': (lData['digit4'] ?? 0).toDouble(),
+          'digit3': (lData['digit3'] ?? 0).toDouble(),
+          'digit2': (lData['digit2'] ?? 0).toDouble(),
+          'digit1': (lData['digit1'] ?? 0).toDouble(),
+          'swift': (lData['swift'] ?? 0).toDouble(),
+        };
+        _lottoMaxLimits[key] = {
+          'digit4': (lData['maxdigit4'] ?? 0).toDouble(),
+          'digit3': (lData['maxdigit3'] ?? 0).toDouble(),
+          'digit2': (lData['maxdigit2'] ?? 0).toDouble(),
+          'digit1': (lData['maxdigit1'] ?? 0).toDouble(),
+          'swift': (lData['maxswift'] ?? 0).toDouble(),
+        };
+      }
+    }).toList();
+
+    await Future.wait(tasks);
+  }
+
   Widget _buildCreditBadge() {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return const SizedBox();
-
     return StreamBuilder<DocumentSnapshot>(
       stream: _db.collection('users').doc(user.uid).snapshots(),
       builder: (context, snapshot) {
-        double credit = 0.0;
-        if (snapshot.hasData && snapshot.data!.exists) {
-          credit = (snapshot.data!.get('credit') ?? 0).toDouble();
-        }
-
+        double credit = (snapshot.hasData && snapshot.data!.exists)
+            ? (snapshot.data!.get('credit') ?? 0).toDouble()
+            : 0.0;
         return Container(
           margin: const EdgeInsets.only(right: 10, top: 8, bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -88,91 +180,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     );
   }
 
-  Future<void> _loadInitialData() async {
-    setState(() => _isLoading = true); // ✅ เริ่มแสดงตัวโหลด
-    try {
-      final payrateDoc = await _db.collection('configs').doc('payrate').get();
-      if (payrateDoc.exists) {
-        setState(() {
-          _countPerNum = (payrateDoc.data()?['countpernum'] ?? 95000).toInt();
-          _maxOver = (payrateDoc.data()?['maxover'] ?? 5000).toInt();
-          _payPercent = (payrateDoc.data()?['pay_percent'] ?? 10).toInt();
-        });
-      }
-
-      final User? user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final userDoc = await _db.collection('users').doc(user.uid).get();
-        if (userDoc.exists) {
-          double discount = (userDoc.data()?['custdiscount'] ?? 0.0).toDouble();
-          Timestamp? expire = userDoc.data()?['expire_discount'];
-          if (expire != null && expire.toDate().isAfter(DateTime.now())) {
-            setState(() => _userDiscountPercent = discount);
-          }
-        }
-        await _fetchTotalPayoutRisk();
-      }
-      await _loadBaseRates();
-    } catch (e) {
-      debugPrint("🚨 Error: $e");
-    } finally {
-      setState(() => _isLoading = false); // ✅ ปิดตัวโหลดเมื่อเสร็จสิ้น
-    }
-  }
-
-  Future<void> _fetchTotalPayoutRisk() async {
-    for (var bet in widget.draftBets) {
-      String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
-      final snap = await _db
-          .collection('bets')
-          .where('number', isEqualTo: bet['num'])
-          .where('category', isEqualTo: bet['cat'])
-          .where('lotto_key', isEqualTo: bet['lottoKey'])
-          .where('status', isEqualTo: 'pending')
-          .get();
-
-      double totalRisk = 0;
-      for (var doc in snap.docs) {
-        totalRisk += (doc.data()['total_pay'] ?? 0).toDouble();
-      }
-      setState(() => _accumulatedPayoutMap[mapKey] = totalRisk);
-    }
-  }
-
-  Future<void> _loadBaseRates() async {
-    Set<String?> selectedKeys = widget.draftBets
-        .map((e) => e['lottoKey'])
-        .toSet();
-    for (String? key in selectedKeys) {
-      if (key == null) continue;
-      final lottoSnap = await _db
-          .collection('configs')
-          .doc('lottogen')
-          .collection('lottogrid')
-          .where('lottotype', isEqualTo: key)
-          .get();
-      if (lottoSnap.docs.isNotEmpty) {
-        var lData = lottoSnap.docs.first.data();
-        setState(() {
-          _allBasePayRates[key] = {
-            'digit4': (lData['digit4'] ?? 0).toDouble(),
-            'digit3': (lData['digit3'] ?? 0).toDouble(),
-            'digit2': (lData['digit2'] ?? 0).toDouble(),
-            'digit1': (lData['digit1'] ?? 0).toDouble(),
-            'swift': (lData['swift'] ?? 0).toDouble(),
-          };
-          _lottoMaxLimits[key] = {
-            'digit4': (lData['maxdigit4'] ?? 0).toDouble(),
-            'digit3': (lData['maxdigit3'] ?? 0).toDouble(),
-            'digit2': (lData['maxdigit2'] ?? 0).toDouble(),
-            'digit1': (lData['maxdigit1'] ?? 0).toDouble(),
-            'swift': (lData['maxswift'] ?? 0).toDouble(),
-          };
-        });
-      }
-    }
-  }
-
   Map<String, dynamic> _getRateInfo(int index) {
     if (index >= widget.draftBets.length)
       return {
@@ -181,7 +188,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         "isClosed": false,
         "isOverLimit": false,
       };
-
     var bet = widget.draftBets[index];
     double input = double.tryParse(priceControllers[index]?.text ?? "") ?? 0;
     String cat = (bet['cat'] ?? "").replaceAll(RegExp(r'\s+'), "");
@@ -200,7 +206,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     double base = _allBasePayRates[bet['lottoKey']]?[fieldKey] ?? 0;
     double maxLimit = _lottoMaxLimits[bet['lottoKey']]?[fieldKey] ?? 0;
     bool isOverLimit = maxLimit > 0 && input > maxLimit;
-
     String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
     double accumulatedRisk = _accumulatedPayoutMap[mapKey] ?? 0;
 
@@ -208,11 +213,8 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     if (accumulatedRisk >= _countPerNum) {
       steps = 1;
       double excess = accumulatedRisk - _countPerNum;
-      if (excess > 0 && _maxOver > 0) {
-        steps += (excess / _maxOver).floor();
-      }
+      if (excess > 0 && _maxOver > 0) steps += (excess / _maxOver).floor();
     }
-
     int finalRate = (base * (1 - (steps * _payPercent / 100))).round();
     if (finalRate <= 0)
       return {
@@ -222,7 +224,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         "isOverLimit": isOverLimit,
         "maxAmt": maxLimit,
       };
-
     return {
       "rate": finalRate,
       "isDiscounted": finalRate < base,
@@ -235,7 +236,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   Future<void> _submitBetsToFirebase() async {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     for (int i = 0; i < widget.draftBets.length; i++) {
       var r = _getRateInfo(i);
       if (r['isOverLimit']) {
@@ -250,13 +250,11 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         return;
       }
     }
-
     double total = 0;
     priceControllers.values.forEach(
       (c) => total += double.tryParse(c.text) ?? 0,
     );
     if (total <= 0) return;
-
     double disc = (total * _userDiscountPercent) / 100;
     double netPay = total - disc;
 
@@ -265,14 +263,12 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       final userRef = _db.collection('users').doc(user.uid);
       final userSnap = await userRef.get();
       double currentCredit = (userSnap.data()?['credit'] ?? 0.0).toDouble();
-
       if (currentCredit < netPay) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text("เครดิตไม่เพียงพอ")));
         return;
       }
-
       batch.update(userRef, {'credit': FieldValue.increment(-netPay)});
       String billId = "BILL-${DateTime.now().millisecondsSinceEpoch}";
       batch.set(_db.collection('bills').doc(billId), {
@@ -282,7 +278,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         'timestamp': FieldValue.serverTimestamp(),
         'status': 'pending',
       });
-
       for (int i = 0; i < widget.draftBets.length; i++) {
         double amt = double.tryParse(priceControllers[i]!.text) ?? 0;
         if (amt <= 0) continue;
@@ -364,7 +359,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           categoryTotal += double.tryParse(priceControllers[idx]!.text) ?? 0,
     );
     double discountAmount = (categoryTotal * _userDiscountPercent) / 100;
-
     return Card(
       margin: const EdgeInsets.only(bottom: 20),
       shape: RoundedRectangleBorder(
@@ -454,7 +448,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     bool active = _activeFieldIndex == index && _showKeypad;
     bool over = r['isOverLimit'];
     bool red = r['isDiscounted'] || r['isClosed'] || over;
-
     return InkWell(
       onTap: () => setState(() {
         _activeFieldIndex = index;
@@ -618,7 +611,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       ),
     ),
   );
-
   Widget _qBtn(String l, int v) => InkWell(
     onTap: () => setState(() {
       for (var c in priceControllers.values) {
