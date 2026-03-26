@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-// ✅ หน้าจอสำหรับตั้งผลรางวัล และจ่ายเงินให้ผู้ชนะโดยอัตโนมัติ
+// หน้าจอสำหรับตั้งผลรางวัล และเมื่อกด "บันทึก & จ่ายเงิน" จะทำการตรวจสอบโพยที่ยังรอผลรางวัลอยู่ทั้งหมดในหมวดหมู่ที่เกี่ยวข้อง
 class AdminSetResultScreen extends StatefulWidget {
   const AdminSetResultScreen({super.key});
 
@@ -23,7 +23,7 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
     return betList.join() == resList.join();
   }
 
-  // ✅ ฟังก์ชันเช็ค "เลขวิ่ง" (เช็คว่ามีเลขนั้นอยู่ในชุดผลรางวัลหรือไม่)
+  // ✅ ฟังก์ชันเช็ค "เลขวิ่ง"
   bool isWinVing(String betNum, String resultNum) {
     if (betNum.isEmpty || resultNum.isEmpty) return false;
     return resultNum.contains(betNum);
@@ -102,6 +102,8 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
                               ? Image.network(
                                   lottoData['lottolink'],
                                   height: 30,
+                                  errorBuilder: (c, e, s) =>
+                                      const Icon(Icons.casino),
                                 )
                               : const Icon(Icons.casino),
                           title: Text(
@@ -280,8 +282,6 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
     setState(() => _isProcessing = true);
     try {
       await _updateLottoResult(key, name, t4, t3, b2, has4);
-
-      // ดึง 2 ตัวท้ายของ 3 ตัวบน เพื่อตรวจรางวัล "สองตัวบน"
       String top2Result = t3.trim().length >= 3
           ? t3.trim().substring(t3.trim().length - 2)
           : "";
@@ -308,16 +308,22 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
         affectedBills.add(bId);
         bool isWin = false;
 
-        // 🛠️ ตรวจสอบรางวัลทุกหมวดหมู่
-        if (cat == "สี่ตัวบน" && has4 && betNumbers == t4.trim()) {
+        // ✅ Logic ตรวจรางวัลครอบคลุมทุกหมวดหมู่ (รองรับทั้งอักขระตัวเลขและภาษาไทย)
+        if ((cat == "สี่ตัวบน" || cat == "4 ตัวบน") &&
+            has4 &&
+            betNumbers == t4.trim()) {
           isWin = true;
-        } else if (cat == "สามตัวบน" && betNumbers == t3.trim()) {
+        } else if ((cat == "สามตัวบน" || cat == "3 ตัวบน") &&
+            betNumbers == t3.trim()) {
           isWin = true;
-        } else if (cat == "สามตัวโต๊ด" && isTodWin(betNumbers, t3.trim())) {
+        } else if ((cat == "สามตัวโต๊ด" || cat == "3 ตัวโต๊ด") &&
+            isTodWin(betNumbers, t3.trim())) {
           isWin = true;
-        } else if (cat == "สองตัวบน" && betNumbers == top2Result) {
+        } else if ((cat == "สองตัวบน" || cat == "2 ตัวบน") &&
+            betNumbers == top2Result) {
           isWin = true;
-        } else if (cat == "สองตัวล่าง" && betNumbers == b2.trim()) {
+        } else if ((cat == "สองตัวล่าง" || cat == "2 ตัวล่าง") &&
+            betNumbers == b2.trim()) {
           isWin = true;
         } else if (cat == "วิ่งบน" && isWinVing(betNumbers, t3.trim())) {
           isWin = true;
@@ -335,13 +341,11 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
         }
       }
 
-      // จ่ายเครดิต
       userPayouts.forEach(
         (uid, amt) => batch.update(_db.collection('users').doc(uid), {
           'credit': FieldValue.increment(amt),
         }),
       );
-      // Sync บิล
       for (String bId in affectedBills) {
         double winAmt = billWins[bId] ?? 0.0;
         batch.update(_db.collection('bills').doc(bId), {
@@ -350,13 +354,17 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
         });
       }
 
-      // 📝 บันทึก Log การจ่ายเงิน
-      String logId = "LOG-${DateTime.now().millisecondsSinceEpoch}";
-      batch.set(_db.collection('payout_logs').doc(logId), {
-        'logId': logId,
+      // ✅ 🛠️ บันทึก Log การจ่ายเงินแบบละเอียด (ใช้ Auto-generated ID)
+      final logRef = _db.collection('payout_logs').doc();
+      batch.set(logRef, {
+        'logId': logRef.id,
+        'lotto_key': key,
         'lotto_name': name,
-        'result': "บน:$t3 ล่าง:$b2",
+        'result_4top': has4 ? t4.trim() : "-",
+        'result_3top': t3.trim(),
+        'result_2bottom': b2.trim(),
         'total_payout': userPayouts.values.fold(0.0, (a, b) => a + b),
+        'total_winners': userPayouts.length,
         'timestamp': FieldValue.serverTimestamp(),
         'admin_id': FirebaseAuth.instance.currentUser?.uid,
       });
