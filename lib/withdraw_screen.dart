@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-//หน้าจอสำหรับถอนเงิน โดยจะดึงข้อมูลบัญชีธนาคารของผู้ใช้มาแสดง และให้กรอกจำนวนเงินที่ต้องการถอน
 class WithdrawScreen extends StatefulWidget {
   const WithdrawScreen({super.key});
 
@@ -25,6 +24,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
     _loadUserBankData();
   }
 
+  // ✅ โหลดข้อมูลธนาคารและชื่อจากโปรไฟล์ผู้ใช้
   Future<void> _loadUserBankData() async {
     if (_user == null) return;
     final doc = await FirebaseFirestore.instance
@@ -35,6 +35,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
       setState(() {
         _fullNameController.text = doc.data()?['fullName'] ?? "";
         _bankAccountController.text = doc.data()?['bankAccount'] ?? "";
+        // ✅ ดึงชื่อธนาคารมาเก็บในตัวแปรเพื่อแสดงใน Dropdown
         _selectedBank = doc.data()?['bankName'];
       });
     }
@@ -53,7 +54,6 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
       return;
     }
 
-    // เช็คว่า User ตั้งค่าบัญชีหรือยัง
     if (_bankAccountController.text.isEmpty || _selectedBank == null) {
       _showMsg("กรุณาตั้งค่าบัญชีธนาคารที่หน้าโปรไฟล์ก่อนทำรายการ");
       return;
@@ -104,12 +104,14 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF0F2F5),
       appBar: AppBar(
         title: const Text(
           "ถอนเงิน",
           style: TextStyle(color: Colors.white, fontSize: 18),
         ),
         backgroundColor: const Color(0xFF1A3D5D),
+        centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: StreamBuilder<DocumentSnapshot>(
@@ -148,15 +150,15 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                 ),
                 const SizedBox(height: 15),
 
-                // ✅ Dropdown ธนาคาร (Disabled)
+                // ✅ Dropdown ธนาคาร (Disabled แต่ดึงค่ามาแสดง)
                 _buildBankDropdown(enabled: false),
-
                 const SizedBox(height: 15),
+
                 // ✅ เลขบัญชี (Disabled)
                 _buildInput(
                   "เลขบัญชีธนาคาร",
                   _bankAccountController,
-                  Icons.numbers,
+                  Icons.account_balance_wallet_outlined,
                   enabled: false,
                 ),
 
@@ -167,7 +169,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 15),
-                // ⚠️ ช่องนี้ช่องเดียวที่แก้ไขได้
+                // ✅ ช่องระบุจำนวนเงิน (ตัวเดียวที่แก้ไขได้)
                 _buildInput(
                   "จำนวนเงิน",
                   _amountController,
@@ -177,10 +179,9 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                 ),
 
                 const SizedBox(height: 30),
-
                 _buildSubmitButton(credit),
 
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
                 const Center(
                   child: Text(
                     "* หากต้องการเปลี่ยนบัญชี กรุณาไปที่หน้า 'ตั้งค่าบัญชี'",
@@ -202,24 +203,32 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
   Widget _buildBalanceCard(double credit) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(25),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF11998E), Color(0xFF38EF7D)],
         ),
         borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: Column(
         children: [
           const Text(
             "ยอดเงินที่ถอนได้",
-            style: TextStyle(color: Colors.white70),
+            style: TextStyle(color: Colors.white70, fontSize: 14),
           ),
+          const SizedBox(height: 8),
           Text(
             "฿ ${credit.toStringAsFixed(2)}",
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 32,
+              fontSize: 36,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -228,68 +237,61 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
     );
   }
 
+  // ✅ ปรับจูน Dropdown ให้แสดงชื่อธนาคารจาก DB และปิดการแก้ไข
   Widget _buildBankDropdown({bool enabled = true}) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('configs')
-          .doc('banks')
-          .snapshots(),
-      builder: (context, snapshot) {
-        List<dynamic> banks = [];
-        if (snapshot.hasData && snapshot.data!.exists) {
-          banks = snapshot.data!.get('bank_list') ?? [];
-        }
-
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: enabled
-                ? Colors.white
-                : Colors.grey.shade100, // เปลี่ยนสีพื้นหลังถ้าปิดการใช้งาน
-            border: Border.all(color: Colors.grey.shade400),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              hint: const Text("เลือกธนาคาร"),
-              value: _selectedBank,
-              items: banks.map((bank) {
-                return DropdownMenuItem<String>(
-                  value: bank.toString(),
-                  child: Text(
-                    bank.toString(),
-                    style: TextStyle(
-                      color: enabled ? Colors.black : Colors.grey,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: enabled ? Colors.white : Colors.grey.shade100,
+        border: Border.all(color: Colors.grey.shade400),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          hint: const Text("เลือกธนาคาร"),
+          value: _selectedBank, // ✅ ค่านี้ดึงมาจาก _loadUserBankData()
+          items: _selectedBank == null
+              ? []
+              : [
+                  DropdownMenuItem(
+                    value: _selectedBank,
+                    child: Text(
+                      _selectedBank!,
+                      style: TextStyle(
+                        color: enabled ? Colors.black : Colors.grey.shade700,
+                      ),
                     ),
                   ),
-                );
-              }).toList(),
-              onChanged: null, // ✅ ส่งค่า null เพื่อสั่ง Disable dropdown
-            ),
-          ),
-        );
-      },
+                ],
+          onChanged: null, // ✅ สั่งเป็น null เพื่อไม่ให้คลิกเลือกใหม่ได้
+        ),
+      ),
     );
   }
 
   Widget _buildSubmitButton(double credit) {
     return SizedBox(
       width: double.infinity,
-      height: 50,
+      height: 55,
       child: ElevatedButton(
         onPressed: _isLoading ? null : () => _submitWithdraw(credit),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF1A3D5D),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
           ),
+          elevation: 0,
         ),
         child: _isLoading
             ? const CircularProgressIndicator(color: Colors.white)
             : const Text(
                 "ยืนยันการถอนเงิน",
-                style: TextStyle(color: Colors.white, fontSize: 16),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
       ),
     );
@@ -304,16 +306,25 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
   }) {
     return TextField(
       controller: controller,
-      enabled: enabled, // ✅ ควบคุมการแก้ไขจากตรงนี้
-      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      enabled: enabled,
+      keyboardType: isNumber
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : TextInputType.text,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: enabled ? Colors.blueGrey : Colors.grey),
+        prefixIcon: Icon(
+          icon,
+          color: enabled ? const Color(0xFF1A3D5D) : Colors.grey,
+        ),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         filled: true,
         fillColor: enabled ? Colors.white : Colors.grey.shade100,
+        contentPadding: const EdgeInsets.symmetric(vertical: 16),
       ),
-      style: TextStyle(color: enabled ? Colors.black : Colors.grey.shade700),
+      style: TextStyle(
+        color: enabled ? Colors.black : Colors.grey.shade700,
+        fontWeight: enabled ? FontWeight.bold : FontWeight.normal,
+      ),
     );
   }
 }
