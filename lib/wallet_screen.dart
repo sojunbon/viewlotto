@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart'; // ✅ เพิ่ม import
 import 'package:flutter/material.dart';
 import 'deposit_screen.dart';
 import 'withdraw_screen.dart';
+import 'package:intl/intl.dart';
 
 class WalletScreen extends StatelessWidget {
   const WalletScreen({super.key});
@@ -88,7 +89,10 @@ class WalletScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                "฿ ${credit.toStringAsFixed(2)}", // ✅ แสดงยอดเงินจริงจาก Firebase
+                // "฿ ${credit.toStringAsFixed(2)}", // ✅ แสดงยอดเงินจริงจาก Firebase
+                NumberFormat(
+                  '#,###.00',
+                ).format(credit), // ✅ ใช้ intl ในการจัดรูปแบบตัวเลข
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 32,

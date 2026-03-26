@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'account_setting_screen.dart'; // ✅ ตรวจสอบว่าชื่อไฟล์ตรงกับที่คุณสร้าง
+import 'package:intl/intl.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -138,7 +139,8 @@ class ProfileScreen extends StatelessWidget {
                 ],
               ),
               Text(
-                "฿ ${credit.toStringAsFixed(2)}",
+                // "฿ ${credit.toStringAsFixed(2)}",
+                NumberFormat('#,###.00').format(credit),
                 style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,

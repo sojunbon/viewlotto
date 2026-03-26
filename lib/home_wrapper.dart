@@ -111,7 +111,8 @@ class _HomeWrapperState extends State<HomeWrapper> {
               ),
               const SizedBox(width: 6),
               Text(
-                "฿ ${credit.toStringAsFixed(2)}",
+                // "฿ ${credit.toStringAsFixed(2)}",
+                NumberFormat('#,###.00').format(credit),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
