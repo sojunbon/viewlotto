@@ -42,13 +42,10 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     }
   }
 
-  // ✅ ปรับปรุง Logic การโหลดให้ทำงานแบบขนาน (Parallel) เพื่อความเร็วสูงสุด
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     final User? user = FirebaseAuth.instance.currentUser;
-
     try {
-      // 🚀 ใช้ Future.wait เพื่อดึงข้อมูลทุกอย่างพร้อมกัน
       await Future.wait([
         _fetchPayrateConfig(),
         if (user != null) _fetchUserData(user.uid),
@@ -83,7 +80,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   }
 
   Future<void> _fetchTotalPayoutRisk() async {
-    // ใช้ Future.wait ภายในเพื่อเช็กยอดสะสมของเลขทุกตัวพร้อมกัน
     List<Future> tasks = widget.draftBets.map((bet) async {
       String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
       final snap = await _db
@@ -100,7 +96,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       }
       _accumulatedPayoutMap[mapKey] = totalRisk;
     }).toList();
-
     await Future.wait(tasks);
   }
 
@@ -135,7 +130,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         };
       }
     }).toList();
-
     await Future.wait(tasks);
   }
 
@@ -233,6 +227,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     };
   }
 
+  // ✅ ปรับปรุงส่วนการส่งข้อมูล (Document ID & Navigation)
   Future<void> _submitBetsToFirebase() async {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -269,15 +264,22 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         ).showSnackBar(const SnackBar(content: Text("เครดิตไม่เพียงพอ")));
         return;
       }
+
+      // ✅ 1. ให้ Firebase รัน Auto-ID ให้สำหรับ Bills เพื่อป้องกัน ID ซ้ำ
+      DocumentReference billRef = _db.collection('bills').doc();
+      String billId = billRef.id;
+
       batch.update(userRef, {'credit': FieldValue.increment(-netPay)});
-      String billId = "BILL-${DateTime.now().millisecondsSinceEpoch}";
-      batch.set(_db.collection('bills').doc(billId), {
+
+      // ✅ 2. บันทึก Bill โดยใช้ ID จาก Firebase
+      batch.set(billRef, {
         'billId': billId,
         'uid': user.uid,
         'net_pay': netPay,
-        'timestamp': FieldValue.serverTimestamp(),
         'status': 'pending',
+        'timestamp': FieldValue.serverTimestamp(),
       });
+
       for (int i = 0; i < widget.draftBets.length; i++) {
         double amt = double.tryParse(priceControllers[i]!.text) ?? 0;
         if (amt <= 0) continue;
@@ -295,8 +297,16 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           'timestamp': FieldValue.serverTimestamp(),
         });
       }
+
       await batch.commit();
-      Navigator.pop(context);
+
+      // ✅ 3. ปิดทั้งหน้า PriceInput และ NumberInput พร้อมกัน
+      if (mounted) {
+        int count = 0;
+        Navigator.popUntil(context, (route) {
+          return count++ == 2;
+        });
+      }
     } catch (e) {
       debugPrint("🚨 Submit Error: $e");
     }
