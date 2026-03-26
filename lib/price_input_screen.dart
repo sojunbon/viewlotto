@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 const Color kMainGreen = Color(0xFF11998E);
 
-// หน้าจอสำหรับระบุราคาแต่ละเลขที่จะแทง ก่อนกดส่งโพยไปยัง Firebase
 class PriceInputScreen extends StatefulWidget {
   final List<Map<String, String>> draftBets;
   const PriceInputScreen({super.key, required this.draftBets});
@@ -21,7 +21,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   Map<String, double> _accumulatedPayoutMap = {};
 
   int _countPerNum = 95000;
-  int _maxOver = 5000; // ✅ ฟิลด์ใหม่สำหรับคำนวณช่วงการลดเรท (Step)
+  int _maxOver = 5000;
   int _payPercent = 10;
   double _userDiscountPercent = 0.0;
   int _activeFieldIndex = 0;
@@ -41,14 +41,58 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     }
   }
 
+  // ✅ ฟังก์ชันแสดงยอดเงินแบบ Real-time บน AppBar
+  Widget _buildCreditBadge() {
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox();
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _db.collection('users').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        double credit = 0.0;
+        if (snapshot.hasData && snapshot.data!.exists) {
+          credit = (snapshot.data!.get('credit') ?? 0).toDouble();
+        }
+
+        return Container(
+          margin: const EdgeInsets.only(right: 10, top: 8, bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: Colors.black26,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.account_balance_wallet,
+                color: Colors.yellow,
+                size: 14,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                NumberFormat('#,###.00').format(credit),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _loadInitialData() async {
     try {
       final payrateDoc = await _db.collection('configs').doc('payrate').get();
       if (payrateDoc.exists) {
         setState(() {
           _countPerNum = (payrateDoc.data()?['countpernum'] ?? 95000).toInt();
-          _maxOver = (payrateDoc.data()?['maxover'] ?? 5000)
-              .toInt(); // ✅ ดึงค่า maxover จาก Firebase
+          _maxOver = (payrateDoc.data()?['maxover'] ?? 5000).toInt();
           _payPercent = (payrateDoc.data()?['pay_percent'] ?? 10).toInt();
         });
       }
@@ -135,7 +179,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
 
     var bet = widget.draftBets[index];
     double input = double.tryParse(priceControllers[index]?.text ?? "") ?? 0;
-
     String cat = (bet['cat'] ?? "").replaceAll(RegExp(r'\s+'), "");
     String fieldKey = "";
     if (cat.contains("สี่ตัว"))
@@ -156,20 +199,16 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
     double accumulatedRisk = _accumulatedPayoutMap[mapKey] ?? 0;
 
-    // 🛠️ ปรับปรุง Logic การลดเรทแบบขั้นบันได (Range ขั้นบันได)
+    // 🛠️ NEW LOGIC: ขั้นบันได (Range Step)
     int steps = 0;
     if (accumulatedRisk >= _countPerNum) {
-      // Step ที่ 1: เมื่อถึงยอด countpernum ครั้งแรก
       steps = 1;
-
-      // Step ต่อๆ ไป: คำนวณส่วนที่เกินจาก countpernum หารด้วยช่วง maxover
       double excess = accumulatedRisk - _countPerNum;
       if (excess > 0 && _maxOver > 0) {
         steps += (excess / _maxOver).floor();
       }
     }
 
-    // คำนวณเรทจ่ายสุดท้าย (ลดครั้งละ _payPercent % ตามจำนวน Steps)
     int finalRate = (base * (1 - (steps * _payPercent / 100))).round();
 
     if (finalRate <= 0)
@@ -275,11 +314,15 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF0F2F5),
       appBar: AppBar(
-        title: const Text("ระบุราคา", style: TextStyle(color: Colors.white)),
+        title: const Text(
+          "ระบุราคา",
+          style: TextStyle(color: Colors.white, fontSize: 18),
+        ),
         backgroundColor: kMainGreen,
-        centerTitle: true,
+        centerTitle: false, // ✅ เว้นที่ให้ Badge ยอดเงิน
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [_buildCreditBadge()], // ✅ แสดงยอดเงิน Real-time
       ),
       body: Column(
         children: [
