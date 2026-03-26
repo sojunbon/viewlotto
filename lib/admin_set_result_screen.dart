@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+// ✅ หน้าจอสำหรับตั้งผลรางวัล และจ่ายเงินให้ผู้ชนะโดยอัตโนมัติ
 class AdminSetResultScreen extends StatefulWidget {
   const AdminSetResultScreen({super.key});
 
