@@ -20,7 +20,8 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   Map<String, Map<String, double>> _lottoMaxLimits = {};
   Map<String, double> _accumulatedPayoutMap = {};
 
-  int _countPerNum = 10000; // ค่าเริ่มต้นจากระบบ
+  int _countPerNum = 95000;
+  int _maxOver = 5000; // ✅ ฟิลด์ใหม่สำหรับคำนวณช่วงการลดเรท (Step)
   int _payPercent = 10;
   double _userDiscountPercent = 0.0;
   int _activeFieldIndex = 0;
@@ -45,7 +46,9 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       final payrateDoc = await _db.collection('configs').doc('payrate').get();
       if (payrateDoc.exists) {
         setState(() {
-          _countPerNum = (payrateDoc.data()?['countpernum'] ?? 10000).toInt();
+          _countPerNum = (payrateDoc.data()?['countpernum'] ?? 95000).toInt();
+          _maxOver = (payrateDoc.data()?['maxover'] ?? 5000)
+              .toInt(); // ✅ ดึงค่า maxover จาก Firebase
           _payPercent = (payrateDoc.data()?['pay_percent'] ?? 10).toInt();
         });
       }
@@ -129,6 +132,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         "isClosed": false,
         "isOverLimit": false,
       };
+
     var bet = widget.draftBets[index];
     double input = double.tryParse(priceControllers[index]?.text ?? "") ?? 0;
 
@@ -147,16 +151,25 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
 
     double base = _allBasePayRates[bet['lottoKey']]?[fieldKey] ?? 0;
     double maxLimit = _lottoMaxLimits[bet['lottoKey']]?[fieldKey] ?? 0;
-
     bool isOverLimit = maxLimit > 0 && input > maxLimit;
 
     String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
     double accumulatedRisk = _accumulatedPayoutMap[mapKey] ?? 0;
 
-    // คำนวณเรทจากยอดที่มีในระบบแล้วเท่านั้น เพื่อแก้บั๊กเรทลดล่วงหน้า
-    int steps = accumulatedRisk > 0
-        ? (accumulatedRisk / _countPerNum).floor()
-        : 0;
+    // 🛠️ ปรับปรุง Logic การลดเรทแบบขั้นบันได (Range ขั้นบันได)
+    int steps = 0;
+    if (accumulatedRisk >= _countPerNum) {
+      // Step ที่ 1: เมื่อถึงยอด countpernum ครั้งแรก
+      steps = 1;
+
+      // Step ต่อๆ ไป: คำนวณส่วนที่เกินจาก countpernum หารด้วยช่วง maxover
+      double excess = accumulatedRisk - _countPerNum;
+      if (excess > 0 && _maxOver > 0) {
+        steps += (excess / _maxOver).floor();
+      }
+    }
+
+    // คำนวณเรทจ่ายสุดท้าย (ลดครั้งละ _payPercent % ตามจำนวน Steps)
     int finalRate = (base * (1 - (steps * _payPercent / 100))).round();
 
     if (finalRate <= 0)
@@ -266,6 +279,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         backgroundColor: kMainGreen,
         centerTitle: true,
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Column(
         children: [
@@ -448,7 +462,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
                 ),
               ),
             ),
-            // ✅ ปุ่ม Clear (กากบาท)
             const SizedBox(width: 5),
             IconButton(
               onPressed: () => setState(() => priceControllers[index]!.clear()),
