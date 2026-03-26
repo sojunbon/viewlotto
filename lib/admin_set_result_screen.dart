@@ -87,7 +87,7 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
                           subtitle: Text(
                             currentRes != null
                                 ? "ล่าสุด: ${hasDigit4 ? '${currentRes['res_4top'] ?? '-'} | ' : ''}${currentRes['res_3top']} | ${currentRes['res_2bottom']}"
-                                : "ยังไม่มีผล",
+                                : "ยังไม่มีการออกผล",
                             style: TextStyle(
                               color: currentRes != null
                                   ? Colors.green
@@ -236,7 +236,6 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
     await _db.collection('lotto_results').doc(key).set(data);
   }
 
-  // ✅ ฟังก์ชันตรวจรางวัลและ Update ทั้ง bets, bills และเงินลูกค้า
   Future<void> _updateResultAndCheckBets(
     String key,
     String name,
@@ -251,7 +250,7 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
     try {
       await _updateLottoResult(key, name, t4, t3, b2, has4);
 
-      // 🛠️ แก้ไข: ใช้ 'lotto_key' ตามรูป และเลือกเฉพาะ 'pending'
+      // ✅ Query ด้วย lotto_key และ status: pending
       QuerySnapshot pendingBets = await _db
           .collection('bets')
           .where('lotto_key', isEqualTo: key)
@@ -266,44 +265,49 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
       for (var doc in pendingBets.docs) {
         final d = doc.data() as Map<String, dynamic>;
 
-        // 🛠️ แก้ปัญหา Number vs String: แปลงค่าให้เป็น String และล้างช่องว่างก่อนเทียบ
+        // 🛠️ ล้างค่า String ให้สะอาดที่สุด และแปลง Number เป็น String อัตโนมัติ
         final String betNumbers = d['number'].toString().trim();
         final String cat = d['category'].toString().trim();
-        final String billId = d['billId'] ?? '';
+        final String bId = d['billId'] ?? '';
         final String uid = d['uid'] ?? '';
         double price = (d['price_bet'] ?? 0.0).toDouble();
         double rate = (d['rate_pay'] ?? 0.0).toDouble();
 
-        affectedBills.add(billId);
+        affectedBills.add(bId);
         bool isWin = false;
 
-        // เทียบค่าแบบ String เสมอ
-        if (cat == "4 ตัวบน" && has4 && betNumbers == t4.trim())
+        // 🛠️ แก้ไข Logic: รองรับทั้งอักขระ "ตัวเลข" และ "ภาษาไทย" ให้ตรงกับ DB
+        if ((cat == "4 ตัวบน" || cat == "สี่ตัวบน") &&
+            has4 &&
+            betNumbers == t4.trim()) {
           isWin = true;
-        else if (cat == "3 ตัวบน" && betNumbers == t3.trim())
+        } else if ((cat == "3 ตัวบน" || cat == "สามตัวบน") &&
+            betNumbers == t3.trim()) {
           isWin = true;
-        else if (cat == "2 ตัวล่าง" && betNumbers == b2.trim())
+        } else if ((cat == "2 ตัวล่าง" || cat == "สองตัวล่าง") &&
+            betNumbers == b2.trim()) {
           isWin = true;
+        }
 
         if (isWin) {
           double payout = price * rate;
           userPayouts[uid] = (userPayouts[uid] ?? 0.0) + payout;
-          billWins[billId] = (billWins[billId] ?? 0.0) + payout;
+          billWins[bId] = (billWins[bId] ?? 0.0) + payout;
           batch.update(doc.reference, {'status': 'win', 'payout': payout});
         } else {
           batch.update(doc.reference, {'status': 'lose', 'payout': 0.0});
-          if (!billWins.containsKey(billId)) billWins[billId] = 0.0;
+          if (!billWins.containsKey(bId)) billWins[bId] = 0.0;
         }
       }
 
-      // 💰 บวกเครดิตลูกค้า (increment)
+      // 💰 จ่ายเครดิต (increment)
       userPayouts.forEach((uid, amt) {
         batch.update(_db.collection('users').doc(uid), {
           'credit': FieldValue.increment(amt),
         });
       });
 
-      // 🔄 Sync สถานะไปที่ Bills (หัวบิล)
+      // 🔄 Sync สถานะไปที่ Bills
       for (String bId in affectedBills) {
         double winAmt = billWins[bId] ?? 0.0;
         batch.update(_db.collection('bills').doc(bId), {
@@ -315,7 +319,7 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
       await batch.commit();
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("อัปเดตผลและจ่ายเงินสำเร็จ")),
+          const SnackBar(content: Text("จ่ายเงินรางวัลและอัปเดตบิลสำเร็จ")),
         );
     } catch (e) {
       debugPrint("Error: $e");
