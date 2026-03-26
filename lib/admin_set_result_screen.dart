@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // อย่าลืมเพิ่ม intl ใน pubspec.yaml
 
+// หน้าจอสำหรับแอดมินในการตั้งผลรางวัลและจ่ายเงินให้ผู้ชนะ
 class AdminSetResultScreen extends StatefulWidget {
   const AdminSetResultScreen({super.key});
 
