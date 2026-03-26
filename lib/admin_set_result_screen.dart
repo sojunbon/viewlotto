@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 class AdminSetResultScreen extends StatefulWidget {
   const AdminSetResultScreen({super.key});
@@ -24,7 +23,6 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
         backgroundColor: const Color(0xFF1A3D5D),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      // ✅ 1. ดึง Document 'setnum4' มาเพื่อเช็ค Array 'lottotype'
       body: StreamBuilder<DocumentSnapshot>(
         stream: _db.collection('configs').doc('setnum4').snapshots(),
         builder: (context, config4Snapshot) {
@@ -32,7 +30,6 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
           if (config4Snapshot.hasData && config4Snapshot.data!.exists) {
             final configData =
                 config4Snapshot.data!.data() as Map<String, dynamic>;
-            // ตรวจสอบฟิลด์ lottotype ที่เป็น Array ตามรูป
             lottotypeArray = configData['lottotype'] ?? [];
           }
 
@@ -55,8 +52,6 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
                   final lottoData =
                       lottoGridDocs[index].data() as Map<String, dynamic>;
                   final String lottoKey = lottoData['lottotype'] ?? 'unknown';
-
-                  // ✅ 2. เช็คว่าหวยนี้ต้องโชว์ช่อง 4 ตัวไหม (เช็คจาก Array)
                   bool hasDigit4 = lottotypeArray.contains(lottoKey);
 
                   return StreamBuilder<DocumentSnapshot>(
@@ -77,30 +72,29 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
                           borderRadius: BorderRadius.circular(15),
                         ),
                         child: ExpansionTile(
-                          leading: Image.network(
-                            lottoData['lottolink'] ?? '',
-                            height: 30,
-                            errorBuilder: (c, e, s) => const Icon(Icons.casino),
-                          ),
+                          leading: lottoData['lottolink'] != null
+                              ? Image.network(
+                                  lottoData['lottolink'],
+                                  height: 30,
+                                  errorBuilder: (c, e, s) =>
+                                      const Icon(Icons.casino),
+                                )
+                              : const Icon(Icons.casino),
                           title: Text(
                             lottoData['lottoname'] ?? '',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          subtitle: currentRes != null
-                              ? Text(
-                                  "ล่าสุด: ${hasDigit4 ? '${currentRes['res_4top'] ?? '-'} | ' : ''}${currentRes['res_3top']} | ${currentRes['res_2bottom']}",
-                                  style: const TextStyle(
-                                    color: Colors.green,
-                                    fontSize: 12,
-                                  ),
-                                )
-                              : const Text(
-                                  "ยังไม่มีผล",
-                                  style: TextStyle(
-                                    color: Colors.red,
-                                    fontSize: 12,
-                                  ),
-                                ),
+                          subtitle: Text(
+                            currentRes != null
+                                ? "ล่าสุด: ${hasDigit4 ? '${currentRes['res_4top'] ?? '-'} | ' : ''}${currentRes['res_3top']} | ${currentRes['res_2bottom']}"
+                                : "ยังไม่มีผล",
+                            style: TextStyle(
+                              color: currentRes != null
+                                  ? Colors.green
+                                  : Colors.red,
+                              fontSize: 12,
+                            ),
+                          ),
                           children: [
                             _buildSetResultForm(
                               lottoKey,
@@ -145,12 +139,12 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
           Row(
             children: [
               if (hasDigit4) ...[
-                Expanded(child: _buildResultInput("4 ตัวบน", top4, 4)),
+                Expanded(child: _buildInput("4 ตัวบน", top4, 4)),
                 const SizedBox(width: 10),
               ],
-              Expanded(child: _buildResultInput("3 ตัวบน", top3, 3)),
-              const SizedBox(width: 15),
-              Expanded(child: _buildResultInput("2 ตัวล่าง", bottom2, 2)),
+              Expanded(child: _buildInput("3 ตัวบน", top3, 3)),
+              const SizedBox(width: 10),
+              Expanded(child: _buildInput("2 ตัวล่าง", bottom2, 2)),
             ],
           ),
           const SizedBox(height: 15),
@@ -210,23 +204,17 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
     );
   }
 
-  Widget _buildResultInput(
-    String label,
-    TextEditingController controller,
-    int maxLength,
-  ) {
-    return TextField(
-      controller: controller,
-      keyboardType: TextInputType.number,
-      maxLength: maxLength,
-      decoration: InputDecoration(
-        labelText: label,
-        isDense: true,
-        border: const OutlineInputBorder(),
-        counterText: "",
-      ),
-    );
-  }
+  Widget _buildInput(String l, TextEditingController c, int m) => TextField(
+    controller: c,
+    keyboardType: TextInputType.number,
+    maxLength: m,
+    decoration: InputDecoration(
+      labelText: l,
+      isDense: true,
+      border: const OutlineInputBorder(),
+      counterText: "",
+    ),
+  );
 
   Future<void> _updateLottoResult(
     String key,
@@ -237,25 +225,18 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
     bool has4,
   ) async {
     if (t3.length != 3 || b2.length != 2) return;
-    if (has4 && t4.length != 4) return;
-
     Map<String, dynamic> data = {
       'lotto_type': key,
       'lotto_name': name,
-      'res_3top': t3,
-      'res_2bottom': b2,
+      'res_3top': t3.trim(),
+      'res_2bottom': b2.trim(),
       'draw_date': FieldValue.serverTimestamp(),
     };
-    if (has4) data['res_4top'] = t4;
-
+    if (has4) data['res_4top'] = t4.trim();
     await _db.collection('lotto_results').doc(key).set(data);
-    if (mounted)
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("บันทึกผลรางวัลสำเร็จ")));
   }
 
-  // ✅ ฟังก์ชันตรวจรางวัลและ Update โพยลูกค้า (แก้ไข Path bets/bills)
+  // ✅ ฟังก์ชันตรวจรางวัลและ Update ทั้ง bets, bills และเงินลูกค้า
   Future<void> _updateResultAndCheckBets(
     String key,
     String name,
@@ -270,7 +251,7 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
     try {
       await _updateLottoResult(key, name, t4, t3, b2, has4);
 
-      // 🛠️ ดึงจาก Collection 'bets' ตามโครงสร้างจริงของคุณ
+      // 🛠️ แก้ไข: ใช้ 'lotto_key' ตามรูป และเลือกเฉพาะ 'pending'
       QuerySnapshot pendingBets = await _db
           .collection('bets')
           .where('lotto_key', isEqualTo: key)
@@ -279,61 +260,65 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
 
       final batch = _db.batch();
       Map<String, double> userPayouts = {};
-      Map<String, List<double>> billWins = {}; // เก็บยอดชนะแยกตาม billId
+      Map<String, double> billWins = {};
+      Set<String> affectedBills = {};
 
       for (var doc in pendingBets.docs) {
-        final betData = doc.data() as Map<String, dynamic>;
-        final String betNumbers = betData['number'].toString();
-        final String betCategory = betData['category'] ?? '';
-        final String billId = betData['billId'] ?? '';
-        final String uid = betData['uid'] ?? '';
-        double rate = (betData['rate_pay'] ?? 0.0).toDouble();
-        double price = (betData['price_bet'] ?? 0.0).toDouble();
+        final d = doc.data() as Map<String, dynamic>;
 
+        // 🛠️ แก้ปัญหา Number vs String: แปลงค่าให้เป็น String และล้างช่องว่างก่อนเทียบ
+        final String betNumbers = d['number'].toString().trim();
+        final String cat = d['category'].toString().trim();
+        final String billId = d['billId'] ?? '';
+        final String uid = d['uid'] ?? '';
+        double price = (d['price_bet'] ?? 0.0).toDouble();
+        double rate = (d['rate_pay'] ?? 0.0).toDouble();
+
+        affectedBills.add(billId);
         bool isWin = false;
 
-        // ตรวจเงื่อนไข
-        if (betCategory == "4 ตัวบน" && has4 && betNumbers == t4)
+        // เทียบค่าแบบ String เสมอ
+        if (cat == "4 ตัวบน" && has4 && betNumbers == t4.trim())
           isWin = true;
-        else if (betCategory == "3 ตัวบน" && betNumbers == t3)
+        else if (cat == "3 ตัวบน" && betNumbers == t3.trim())
           isWin = true;
-        else if (betCategory == "2 ตัวล่าง" && betNumbers == b2)
+        else if (cat == "2 ตัวล่าง" && betNumbers == b2.trim())
           isWin = true;
 
         if (isWin) {
           double payout = price * rate;
           userPayouts[uid] = (userPayouts[uid] ?? 0.0) + payout;
-          billWins[billId] = (billWins[billId] ?? [])..add(payout);
+          billWins[billId] = (billWins[billId] ?? 0.0) + payout;
           batch.update(doc.reference, {'status': 'win', 'payout': payout});
         } else {
           batch.update(doc.reference, {'status': 'lose', 'payout': 0.0});
-          if (!billWins.containsKey(billId)) billWins[billId] = [];
+          if (!billWins.containsKey(billId)) billWins[billId] = 0.0;
         }
       }
 
-      // Update ยอดเครดิตลูกค้า
-      userPayouts.forEach((uid, amount) {
+      // 💰 บวกเครดิตลูกค้า (increment)
+      userPayouts.forEach((uid, amt) {
         batch.update(_db.collection('users').doc(uid), {
-          'credit': FieldValue.increment(amount),
+          'credit': FieldValue.increment(amt),
         });
       });
 
-      // ✅ Update Collection 'bills' เพื่อให้หน้าโพยลูกค้าเปลี่ยนสถานะ
-      billWins.forEach((bId, payouts) {
-        double totalBillWin = payouts.fold(0.0, (sum, item) => sum + item);
+      // 🔄 Sync สถานะไปที่ Bills (หัวบิล)
+      for (String bId in affectedBills) {
+        double winAmt = billWins[bId] ?? 0.0;
         batch.update(_db.collection('bills').doc(bId), {
-          'status': totalBillWin > 0 ? 'win' : 'lose',
-          'total_win': totalBillWin,
+          'status': winAmt > 0 ? 'win' : 'lose',
+          'total_win': winAmt,
         });
-      });
+      }
 
       await batch.commit();
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("จ่ายเงินรางวัลและอัปเดตโพยเรียบร้อย")),
+          const SnackBar(content: Text("อัปเดตผลและจ่ายเงินสำเร็จ")),
         );
     } catch (e) {
-      debugPrint("Payout Error: $e");
+      debugPrint("Error: $e");
     }
     setState(() => _isProcessing = false);
   }
