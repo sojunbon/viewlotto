@@ -1,4 +1,4 @@
-import 'dart:async'; // ✅ เพิ่มสำหรับ Timer
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -22,11 +22,11 @@ class _HomeWrapperState extends State<HomeWrapper> {
   final User? _user = FirebaseAuth.instance.currentUser;
 
   late final List<Widget> _pages = [
-    const HomeScreen(), // Index 0: หน้าผลรางวัล
-    const WalletScreen(), // Index 1: ฝาก/ถอน
-    const BetTypeScreen(), // Index 2: แทงหวย (เลือกประเภท)
-    const HistoryScreen(), // Index 3: โพย (รายการที่แทง)
-    const ProfileScreen(), // Index 4: โปรไฟล์
+    const HomeScreen(),
+    const WalletScreen(),
+    const BetTypeScreen(),
+    const HistoryScreen(),
+    const ProfileScreen(),
   ];
 
   @override
@@ -136,7 +136,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
 }
 
 // ------------------------------------------------------------------
-// ✅ หน้า BetTypeScreen (พร้อมระบบนับถอยหลัง Real-time)
+// ✅ หน้า BetTypeScreen (Clean Version - No Debug)
 // ------------------------------------------------------------------
 class BetTypeScreen extends StatefulWidget {
   const BetTypeScreen({super.key});
@@ -151,7 +151,6 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ สั่งให้ UI อัปเดตทุกวินาทีเพื่อให้นาฬิกาเดิน
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) setState(() {});
     });
@@ -163,26 +162,22 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
     super.dispose();
   }
 
-  // ✅ ฟังก์ชันคำนวณหาวันเวลาปิดรับแทงที่ใกล้ที่สุด
   DateTime? _getClosingDateTime(Map<String, dynamic> data) {
     try {
       final now = DateTime.now();
-      final todayMidnight = DateTime(now.year, now.month, now.day);
       String closeStr = data['closeTime'] ?? "15:30";
       final DateFormat timeFormat = DateFormat('HH:mm');
       DateTime closeTimeParsed = timeFormat.parse(closeStr);
 
       DateTime targetClosing;
-
       String? specificDatesStr = data['specificDates'];
+
       if (specificDatesStr != null && specificDatesStr.isNotEmpty) {
-        // กรณีหวยระบุวันที่ (เช่น หวยไทย 1, 16)
         List<int> openDates = specificDatesStr
             .split(',')
             .map((e) => int.tryParse(e.trim()) ?? 0)
             .toList();
         List<DateTime> upcomingDates = [];
-
         for (int day in openDates) {
           if (day == 0) continue;
           DateTime d = DateTime(
@@ -205,7 +200,6 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
         upcomingDates.sort();
         targetClosing = upcomingDates.first;
       } else {
-        // กรณีหวยรายวัน (จันทร์-อาทิตย์)
         targetClosing = DateTime(
           now.year,
           now.month,
@@ -213,9 +207,8 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
           closeTimeParsed.hour,
           closeTimeParsed.minute,
         );
-        if (targetClosing.isBefore(now)) {
+        if (targetClosing.isBefore(now))
           targetClosing = targetClosing.add(const Duration(days: 1));
-        }
       }
       return targetClosing;
     } catch (e) {
@@ -223,160 +216,22 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
     }
   }
 
-  // ✅ ฟังก์ชันจัดรูปแบบเวลาถอยหลัง
   String _getCountdownText(DateTime closingTime) {
     final now = DateTime.now();
     final diff = closingTime.difference(now);
-
     if (diff.isNegative) return "ปิดรับแทง";
-
-    if (diff.inDays > 0) {
-      return "${diff.inDays} วัน ${diff.inHours % 24} ชม.";
-    } else {
-      return "${diff.inHours.toString().padLeft(2, '0')}:${(diff.inMinutes % 60).toString().padLeft(2, '0')}:${(diff.inSeconds % 60).toString().padLeft(2, '0')}";
-    }
+    if (diff.inDays > 0) return "${diff.inDays} วัน ${diff.inHours % 24} ชม.";
+    return "${diff.inHours.toString().padLeft(2, '0')}:${(diff.inMinutes % 60).toString().padLeft(2, '0')}:${(diff.inSeconds % 60).toString().padLeft(2, '0')}";
   }
 
-  /*
   bool _isLottoOpen(Map<String, dynamic> data) {
-    // ใช้ Logic เดิมที่คุณมี แต่ปรับเรื่อง targetDate เดือนถัดไปตามที่คุยกัน
     try {
       final now = DateTime.now();
       final todayMidnight = DateTime(now.year, now.month, now.day);
       if (data['lottostatus'] == false) return false;
 
-      int preOpenDays = data['preOpenDays'] ?? 0;
       String? specificDatesStr = data['specificDates'];
 
-      if (specificDatesStr != null && specificDatesStr.isNotEmpty) {
-        List<int> openDates = specificDatesStr
-            .split(',')
-            .map((e) => int.tryParse(e.trim()) ?? 0)
-            .toList();
-        bool isDateMatch = false;
-        for (int openDate in openDates) {
-          if (openDate == 0) continue;
-          DateTime targetDate = DateTime(now.year, now.month, openDate);
-          if (todayMidnight.isAfter(targetDate))
-            targetDate = DateTime(now.year, now.month + 1, openDate);
-          int dayDiff = targetDate.difference(todayMidnight).inDays;
-          if (dayDiff >= 0 && dayDiff <= preOpenDays) {
-            isDateMatch = true;
-            break;
-          }
-        }
-        if (!isDateMatch) return false;
-      } else {
-        if (!(data['playDays'] ?? []).contains(now.weekday)) return false;
-      }
-
-      final DateFormat tf = DateFormat('HH:mm');
-      DateTime oT = tf.parse(data['openTime'] ?? "06:00");
-      DateTime cT = tf.parse(data['closeTime'] ?? "15:30");
-      oT = DateTime(now.year, now.month, now.day, oT.hour, oT.minute);
-      cT = DateTime(now.year, now.month, now.day, cT.hour, cT.minute);
-
-      return now.isAfter(oT) && now.isBefore(cT);
-    } catch (e) {
-      return false;
-    }
-  }
-  
-
-  bool _isLottoOpen(Map<String, dynamic> data) {
-    try {
-      final now = DateTime.now();
-      final todayMidnight = DateTime(now.year, now.month, now.day);
-
-      // 1. เช็คสถานะหลักก่อน
-      if (data['lottostatus'] == false) return false;
-
-      // ดึงค่า config ต่างๆ
-      String? specificDatesStr = data['specificDates']; // เช่น "1,16"
-      int preOpenDays = data['preOpenDays'] ?? 0; // เช่น 10 วันล่วงหน้า
-
-      final DateFormat tf = DateFormat('HH:mm');
-      DateTime oT = tf.parse(data['openTime'] ?? "06:00");
-      DateTime cT = tf.parse(data['closeTime'] ?? "15:00"); // ปิด 15:00
-
-      // ตั้งค่าเวลาเปิด-ปิด ของวันนี้
-      DateTime openTimeToday = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        oT.hour,
-        oT.minute,
-      );
-      DateTime closeTimeToday = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        cT.hour,
-        cT.minute,
-      );
-
-      // --- ส่วนการเช็ควันที่ (Specific Dates) ---
-      if (specificDatesStr != null && specificDatesStr.isNotEmpty) {
-        List<int> openDates = specificDatesStr
-            .split(',')
-            .map((e) => int.tryParse(e.trim()) ?? 0)
-            .toList();
-
-        bool isTodayTheOpenDay = openDates.contains(now.day);
-
-        // ✅ เคสที่ 1: วันนี้คือวันที่หวยออก (เช่น วันที่ 1 หรือ 16)
-        if (isTodayTheOpenDay) {
-          // ต้องอยู่ระหว่างเวลาเปิด และ ยังไม่ถึงเวลาปิด (15:00)
-          return now.isAfter(openTimeToday) && now.isBefore(closeTimeToday);
-        }
-
-        // ✅ เคสที่ 2: วันนี้ไม่ใช่ตัวเลขวันที่หวยออก แต่เช็คว่าอยู่ในช่วง "เปิดรับล่วงหน้า" หรือไม่
-        bool isWithinPreOpenRange = false;
-        for (int openDate in openDates) {
-          if (openDate == 0) continue;
-
-          // หาวันที่เป้าหมายถัดไป
-          DateTime targetDate = DateTime(now.year, now.month, openDate);
-          if (todayMidnight.isAfter(targetDate)) {
-            targetDate = DateTime(now.year, now.month + 1, openDate);
-          }
-
-          int diffDays = targetDate.difference(todayMidnight).inDays;
-
-          // ถ้าอยู่ในช่วงวันที่เปิดให้แทงล่วงหน้า (และไม่ใช่วันที่หวยออก) ให้ "เปิดรับแทงตลอด 24 ชม."
-          if (diffDays > 0 && diffDays <= preOpenDays) {
-            isWithinPreOpenRange = true;
-            break;
-          }
-        }
-
-        return isWithinPreOpenRange;
-      } else {
-        // --- เคสปกติ (หวยรายวัน ที่ไม่มี specificDates) ---
-        if (!(data['playDays'] ?? []).contains(now.weekday)) return false;
-        return now.isAfter(openTimeToday) && now.isBefore(closeTimeToday);
-      }
-    } catch (e) {
-      return false;
-    }
-  }
-*/
-
-  bool _isLottoOpen(Map<String, dynamic> data) {
-    try {
-      final now = DateTime.now();
-      final todayMidnight = DateTime(now.year, now.month, now.day);
-      String lottoName = data['lottoname'] ?? 'Unknown';
-
-      // 🛑 DEBUG 1: เช็ค Master Switch
-      if (data['lottostatus'] == false) {
-        // debugPrint("❌ [$lottoName] ปิดเพราะ lottostatus = false");
-        return false;
-      }
-
-      String? specificDatesStr = data['specificDates'];
-
-      // ✅ เคสที่ 1: หวยรัฐบาล
       if (specificDatesStr != null && specificDatesStr.trim().isNotEmpty) {
         List<int> openDates = specificDatesStr
             .split(',')
@@ -384,65 +239,35 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
             .where((e) => e > 0)
             .toList();
         int preOpenDays = data['preOpenDays'] ?? 0;
-
         for (int day in openDates) {
           DateTime targetDate = DateTime(now.year, now.month, day);
           if (todayMidnight.isAfter(targetDate))
             targetDate = DateTime(now.year, now.month + 1, day);
-
           int diffDays = targetDate.difference(todayMidnight).inDays;
-          if (diffDays == 0) return _checkTime(data, now, lottoName);
+          if (diffDays == 0) return _checkTime(data, now);
           if (diffDays > 0 && diffDays <= preOpenDays) return true;
         }
         return false;
-      }
-      // ✅ เคสที่ 2: หวยลาว / ฮานอย (เช็ค playDays)
-      else {
+      } else {
         var rawPlayDays = data['playDays'];
         List<int> playDays = [];
-        if (rawPlayDays is List) {
+        if (rawPlayDays is List)
           playDays = rawPlayDays
               .map((e) => int.tryParse(e.toString()) ?? 0)
               .toList();
-        }
-
-        /*
-        // 🛑 DEBUG 2: เช็คข้อมูลวัน
-        debugPrint("------------------------------------------");
-        debugPrint("🔍 ตรวจสอบหวย: $lottoName");
-        debugPrint(
-          "⏰ เวลาเครื่องตอนนี้: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(now)} (วันในสัปดาห์: ${now.weekday})",
-        );
-        debugPrint("📅 PlayDays จาก DB: $playDays");
-        */
-
-        if (playDays.contains(now.weekday)) {
-          return _checkTime(data, now, lottoName);
-        } else {
-          /*
-          debugPrint(
-            "🚫 [$lottoName] ปิดเพราะวันนี้ (${now.weekday}) ไม่อยู่ใน PlayDays $playDays",
-          );
-          */
-
-          return false;
-        }
+        if (playDays.contains(now.weekday)) return _checkTime(data, now);
+        return false;
       }
     } catch (e) {
-      //debugPrint("🚨 Error ใน _isLottoOpen: $e");
       return false;
     }
   }
 
-  bool _checkTime(Map<String, dynamic> data, DateTime now, String name) {
+  bool _checkTime(Map<String, dynamic> data, DateTime now) {
     try {
       final DateFormat tf = DateFormat('HH:mm');
-      String openStr = (data['openTime'] ?? "00:01").toString();
-      String closeStr = (data['closeTime'] ?? "23:59").toString();
-
-      DateTime oT = tf.parse(openStr);
-      DateTime cT = tf.parse(closeStr);
-
+      DateTime oT = tf.parse((data['openTime'] ?? "00:01").toString());
+      DateTime cT = tf.parse((data['closeTime'] ?? "23:59").toString());
       DateTime openToday = DateTime(
         now.year,
         now.month,
@@ -457,25 +282,8 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
         cT.hour,
         cT.minute,
       );
-
-      // 🛑 DEBUG 3: เช็คช่วงเวลา
-      bool isOpen = now.isAfter(openToday) && now.isBefore(closeToday);
-
-      //debugPrint("🕒 ช่วงเวลาเปิดรับ: $openStr - $closeStr");
-
-      if (!isOpen) {
-        debugPrint(
-          "🚫 [$name] ปิดเพราะอยู่นอกช่วงเวลา (ตอนนี้ ${DateFormat('HH:mm').format(now)})",
-        );
-      } else {
-        debugPrint("✅ [$name] เปิดรับแทงปกติ!");
-      }
-
-      //debugPrint("------------------------------------------");
-
-      return isOpen;
+      return now.isAfter(openToday) && now.isBefore(closeToday);
     } catch (e) {
-      //debugPrint("🚨 Error ใน _checkTime: $e");
       return true;
     }
   }
@@ -494,7 +302,6 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
           if (!snapshot.hasData)
             return const Center(child: CircularProgressIndicator());
           final docs = snapshot.data!.docs;
-
           return GridView.builder(
             padding: const EdgeInsets.all(15),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -514,15 +321,12 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
                 child: Opacity(
                   opacity: isOpen ? 1.0 : 0.6,
                   child: InkWell(
-                    // ✅ แก้ไขส่วน onTap ใน HomeWrapper.dart
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => NumberInputScreen(
-                            // ส่งเป็น List ที่มี Map 1 ตัว เพื่อให้เข้ากับ Constructor ใหม่
-                            lottoList: [data],
-                          ),
+                          builder: (context) =>
+                              NumberInputScreen(lottoList: [data]),
                         ),
                       );
                     },
@@ -556,8 +360,6 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
                             ),
                           ),
                           const SizedBox(height: 5),
-
-                          // ✅ แสดงตัวนับถอยหลัง
                           if (isOpen && closingTime != null)
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -588,7 +390,6 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
                                 ],
                               ),
                             ),
-
                           const SizedBox(height: 4),
                           Text(
                             isOpen ? "🟢 เปิดรับแทง" : "🔴 ปิดรับแทง",
