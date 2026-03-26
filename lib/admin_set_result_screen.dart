@@ -32,7 +32,8 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
           if (config4Snapshot.hasData && config4Snapshot.data!.exists) {
             final configData =
                 config4Snapshot.data!.data() as Map<String, dynamic>;
-            lottotypeArray = configData['lottotype'] ?? []; // ดึง Array ออกมา
+            // ตรวจสอบฟิลด์ lottotype ที่เป็น Array ตามรูป
+            lottotypeArray = configData['lottotype'] ?? [];
           }
 
           return StreamBuilder<QuerySnapshot>(
@@ -55,7 +56,7 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
                       lottoGridDocs[index].data() as Map<String, dynamic>;
                   final String lottoKey = lottoData['lottotype'] ?? 'unknown';
 
-                  // ✅ 2. เช็คว่า lottoKey (เช่น lao) อยู่ใน Array หรือไม่
+                  // ✅ 2. เช็คว่าหวยนี้ต้องโชว์ช่อง 4 ตัวไหม (เช็คจาก Array)
                   bool hasDigit4 = lottotypeArray.contains(lottoKey);
 
                   return StreamBuilder<DocumentSnapshot>(
@@ -85,17 +86,21 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
                             lottoData['lottoname'] ?? '',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          subtitle: Text(
-                            currentRes != null
-                                ? "ล่าสุด: ${hasDigit4 ? '${currentRes['res_4top'] ?? '-'} | ' : ''}${currentRes['res_3top']} | ${currentRes['res_2bottom']}"
-                                : "ยังไม่มีผล",
-                            style: TextStyle(
-                              color: currentRes != null
-                                  ? Colors.green
-                                  : Colors.red,
-                              fontSize: 12,
-                            ),
-                          ),
+                          subtitle: currentRes != null
+                              ? Text(
+                                  "ล่าสุด: ${hasDigit4 ? '${currentRes['res_4top'] ?? '-'} | ' : ''}${currentRes['res_3top']} | ${currentRes['res_2bottom']}",
+                                  style: const TextStyle(
+                                    color: Colors.green,
+                                    fontSize: 12,
+                                  ),
+                                )
+                              : const Text(
+                                  "ยังไม่มีผล",
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 12,
+                                  ),
+                                ),
                           children: [
                             _buildSetResultForm(
                               lottoKey,
@@ -117,7 +122,6 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
     );
   }
 
-  // --- ส่วนฟอร์มและการทำงานอื่นๆ (คงเดิมแต่เปลี่ยน isWin ให้ถูกต้อง) ---
   Widget _buildSetResultForm(
     String lottoKey,
     String lottoName,
@@ -234,6 +238,7 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
   ) async {
     if (t3.length != 3 || b2.length != 2) return;
     if (has4 && t4.length != 4) return;
+
     Map<String, dynamic> data = {
       'lotto_type': key,
       'lotto_name': name,
@@ -242,6 +247,7 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
       'draw_date': FieldValue.serverTimestamp(),
     };
     if (has4) data['res_4top'] = t4;
+
     await _db.collection('lotto_results').doc(key).set(data);
     if (mounted)
       ScaffoldMessenger.of(
@@ -249,6 +255,7 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
       ).showSnackBar(const SnackBar(content: Text("บันทึกผลรางวัลสำเร็จ")));
   }
 
+  // ✅ ฟังก์ชันตรวจรางวัลและ Update โพยลูกค้า (แก้ไข Path bets/bills)
   Future<void> _updateResultAndCheckBets(
     String key,
     String name,
@@ -259,24 +266,33 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
   ) async {
     if (t3.length != 3 || b2.length != 2) return;
     setState(() => _isProcessing = true);
+
     try {
       await _updateLottoResult(key, name, t4, t3, b2, has4);
+
+      // 🛠️ ดึงจาก Collection 'bets' ตามโครงสร้างจริงของคุณ
       QuerySnapshot pendingBets = await _db
           .collection('bets')
           .where('lotto_key', isEqualTo: key)
           .where('status', isEqualTo: 'pending')
           .get();
+
       final batch = _db.batch();
       Map<String, double> userPayouts = {};
+      Map<String, List<double>> billWins = {}; // เก็บยอดชนะแยกตาม billId
 
       for (var doc in pendingBets.docs) {
         final betData = doc.data() as Map<String, dynamic>;
         final String betNumbers = betData['number'].toString();
         final String betCategory = betData['category'] ?? '';
+        final String billId = betData['billId'] ?? '';
+        final String uid = betData['uid'] ?? '';
         double rate = (betData['rate_pay'] ?? 0.0).toDouble();
         double price = (betData['price_bet'] ?? 0.0).toDouble();
+
         bool isWin = false;
 
+        // ตรวจเงื่อนไข
         if (betCategory == "4 ตัวบน" && has4 && betNumbers == t4)
           isWin = true;
         else if (betCategory == "3 ตัวบน" && betNumbers == t3)
@@ -286,22 +302,35 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
 
         if (isWin) {
           double payout = price * rate;
-          userPayouts[betData['uid']] =
-              (userPayouts[betData['uid']] ?? 0.0) + payout;
+          userPayouts[uid] = (userPayouts[uid] ?? 0.0) + payout;
+          billWins[billId] = (billWins[billId] ?? [])..add(payout);
           batch.update(doc.reference, {'status': 'win', 'payout': payout});
         } else {
-          batch.update(doc.reference, {'status': 'lose'});
+          batch.update(doc.reference, {'status': 'lose', 'payout': 0.0});
+          if (!billWins.containsKey(billId)) billWins[billId] = [];
         }
       }
-      userPayouts.forEach(
-        (uid, amount) => batch.update(_db.collection('users').doc(uid), {
+
+      // Update ยอดเครดิตลูกค้า
+      userPayouts.forEach((uid, amount) {
+        batch.update(_db.collection('users').doc(uid), {
           'credit': FieldValue.increment(amount),
-        }),
-      );
+        });
+      });
+
+      // ✅ Update Collection 'bills' เพื่อให้หน้าโพยลูกค้าเปลี่ยนสถานะ
+      billWins.forEach((bId, payouts) {
+        double totalBillWin = payouts.fold(0.0, (sum, item) => sum + item);
+        batch.update(_db.collection('bills').doc(bId), {
+          'status': totalBillWin > 0 ? 'win' : 'lose',
+          'total_win': totalBillWin,
+        });
+      });
+
       await batch.commit();
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("จ่ายเงินรางวัลเรียบร้อย")),
+          const SnackBar(content: Text("จ่ายเงินรางวัลและอัปเดตโพยเรียบร้อย")),
         );
     } catch (e) {
       debugPrint("Payout Error: $e");
