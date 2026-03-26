@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 import 'price_input_screen.dart';
 
+// number input หน้ากรอกเล่นเลข
 // ✅ Theme Colors
 const Color kMainGreen = Color(0xFF11998E);
 const Color kLightGreen = Color(0xFF38EF7D);
