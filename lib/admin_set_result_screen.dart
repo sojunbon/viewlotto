@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// หน้าจอสำหรับแอดมินในการตั้งผลรางวัล และเมื่อกดบันทึกพร้อมจ่ายเงิน จะทำการตรวจสอบโพยที่เกี่ยวข้องและอัปเดตสถานะพร้อมจ่ายเงินให้ผู้เล่นโดยอัตโนมัติ
 class AdminSetResultScreen extends StatefulWidget {
   const AdminSetResultScreen({super.key});
 
