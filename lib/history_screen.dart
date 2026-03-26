@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-// 🟢 ประวัติการแทง (History Screen)
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
@@ -15,8 +14,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   String? _selectedBillId;
   Map<String, dynamic>? _selectedBillData;
-
-  // ✅ เก็บข้อมูลหวยทั้งหมดไว้ใน Map (lottotype -> {name, link})
   Map<String, Map<String, String>> _lottoMasterMap = {};
 
   @override
@@ -25,7 +22,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _fetchLottoMasterData();
   }
 
-  // ✅ ดึงข้อมูล Master จาก configs/lottogen/lottogrid
   Future<void> _fetchLottoMasterData() async {
     try {
       final snap = await _db
@@ -39,8 +35,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         String type = d['lottotype'] ?? "";
         if (type.isNotEmpty) {
           tempMap[type] = {
-            'name': d['lottoname'] ?? "ไม่ระบุชื่อ", // ดึงชื่อจาก config
-            'link': d['lottolink'] ?? "", // ดึงลิงก์รูปจาก config
+            'name': d['lottoname'] ?? "ไม่ระบุชื่อ",
+            'link': d['lottolink'] ?? "",
           };
         }
       }
@@ -125,11 +121,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
             'dd MMMM 2026',
           ).format((data['timestamp'] as Timestamp).toDate())
         : "";
+    String timeStr = data['timestamp'] != null
+        ? DateFormat(
+            'HH:mm:ss',
+          ).format((data['timestamp'] as Timestamp).toDate())
+        : "";
     bool isPending = data['status'] == 'pending';
     bool isWin = data['status'] == 'win';
 
     return FutureBuilder<QuerySnapshot>(
-      // ✅ ดึงลัดจาก bets เพื่อเอา lotto_key มาตัวเดียวพอ
       future: _db
           .collection('bets')
           .where('billId', isEqualTo: billId)
@@ -143,8 +143,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
           final betData =
               snapshot.data!.docs.first.data() as Map<String, dynamic>;
           String lottoKey = (betData['lotto_key'] ?? "").toString();
-
-          // ✅ Mapping: เอา lotto_key จาก bet ไปหา ชื่อและรูป ใน Master Map
           if (_lottoMasterMap.containsKey(lottoKey)) {
             lottoName = _lottoMasterMap[lottoKey]!['name']!;
             flagUrl = _lottoMasterMap[lottoKey]!['link']!;
@@ -192,23 +190,54 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           dateStr,
                           style: const TextStyle(
                             color: Colors.grey,
-                            fontSize: 13,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Text(
+                          timeStr,
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 12,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Text(
-                    "🛡️ ฿ ${(data['net_pay'] ?? 0.0).toDouble().toStringAsFixed(2)}",
-                    style: const TextStyle(
-                      color: Color(0xFF00A859),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
+                  // ✅ ปรับส่วนเงินเดิมพันให้มีคำว่า "เงินเดิมพัน" ตามรูป
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.shield,
+                            color: Color(0xFF00A859),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 4),
+                          const Text(
+                            "เงินเดิมพัน : ",
+                            style: TextStyle(
+                              color: Color(0xFF00A859),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          Text(
+                            "฿ ${(data['net_pay'] ?? 0.0).toDouble().toStringAsFixed(2)}",
+                            style: const TextStyle(
+                              color: Color(0xFF00A859),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Icon(
@@ -271,25 +300,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // --- รายละเอียดบิล (Full Page) ---
+  // --- รายละเอียดบิล (ไม่เปลี่ยนแปลง) ---
   Widget _buildFullBillDetail(String billId, Map<String, dynamic> billData) {
     bool isWin = billData['status'] == 'win';
     return Column(
       children: [
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios),
-                onPressed: () => setState(() => _selectedBillId = null),
-              ),
-              const Text(
-                "รายละเอียดบิล",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ],
+        AppBar(
+          title: const Text(
+            "รายละเอียดบิล",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          backgroundColor: const Color(0xFF11998E),
+          centerTitle: true,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+            onPressed: () => setState(() => _selectedBillId = null),
           ),
         ),
         if (isWin)
@@ -333,87 +362,72 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 itemBuilder: (context, index) {
                   final bet =
                       snapshot.data!.docs[index].data() as Map<String, dynamic>;
-                  double priceBet = (bet['price_bet'] ?? 0.0).toDouble();
-                  double ratePay = (bet['rate_pay'] ?? 0.0).toDouble();
-                  double payout = priceBet * ratePay;
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: bet['status'] == 'win'
-                              ? Colors.green
-                              : Colors.grey.shade100,
-                          radius: 25,
-                          child: Text(
-                            "${bet['number']}",
-                            style: TextStyle(
-                              color: bet['status'] == 'win'
-                                  ? Colors.white
-                                  : Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 15),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "${bet['category']}",
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                "฿${priceBet.toStringAsFixed(0)} x ${ratePay.toStringAsFixed(0)}",
-                                style: const TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            const Text(
-                              "ยอดที่จะได้รับ",
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 11,
-                              ),
-                            ),
-                            Text(
-                              "฿${payout.toStringAsFixed(0)}",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: bet['status'] == 'win'
-                                    ? Colors.green
-                                    : Colors.black,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
+                  double payout =
+                      (bet['price_bet'] ?? 0.0).toDouble() *
+                      (bet['rate_pay'] ?? 0.0).toDouble();
+                  return _buildBetItem(bet, payout);
                 },
               );
             },
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildBetItem(Map<String, dynamic> bet, double payout) {
+    bool betWin = bet['status'] == 'win';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: betWin ? Colors.green : Colors.grey.shade100,
+            child: Text(
+              "${bet['number']}",
+              style: TextStyle(color: betWin ? Colors.white : Colors.black),
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "${bet['category']}",
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  "฿${(bet['price_bet'] ?? 0.0).toDouble().toStringAsFixed(0)} x ${(bet['rate_pay'] ?? 0.0).toDouble().toStringAsFixed(0)}",
+                  style: const TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                "ยอดที่จะได้รับ",
+                style: TextStyle(color: Colors.grey, fontSize: 11),
+              ),
+              Text(
+                "฿${payout.toStringAsFixed(0)}",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: betWin ? Colors.green : Colors.black,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
