@@ -1,16 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // ✅ เพิ่มตัวนี้
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart'; // ✅ เพิ่มตัวนี้เพื่อจัดการ format ตัวเลข
 import 'dart:math';
 import 'price_input_screen.dart';
 
-// number input หน้ากรอกเล่นเลข
 // ✅ Theme Colors
 const Color kMainGreen = Color(0xFF11998E);
 const Color kLightGreen = Color(0xFF38EF7D);
 const Color kDeepBlue = Color(0xFF1A3D5D);
 
 class NumberInputScreen extends StatefulWidget {
-  // ✅ รับค่าแบบ List จากหน้า HomeWrapper
   final List<Map<String, dynamic>>? lottoList;
 
   const NumberInputScreen({super.key, this.lottoList});
@@ -20,14 +20,12 @@ class NumberInputScreen extends StatefulWidget {
 }
 
 class _NumberInputScreenState extends State<NumberInputScreen> {
-  // ✅ ใช้ Set เพื่อให้เลือกได้หลายประเภทพร้อมกันแบบอิสระ (Toggle)
   Set<String> selectedCategories = {"สามตัวบน"};
   String currentNumber = "";
   List<Map<String, String>> draftBets = [];
   bool canPlay4Digits = false;
   bool isReverseMode = false;
 
-  // ✅ Getter สำหรับดึงข้อมูลหวยใบแรก
   String get lottoTitle =>
       (widget.lottoList != null && widget.lottoList!.isNotEmpty)
       ? widget.lottoList!.first['lottoname'] ?? "แทงหวย"
@@ -42,6 +40,54 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
   void initState() {
     super.initState();
     _check4DigitConfig();
+  }
+
+  // ✅ ฟังก์ชันสร้าง Badge แสดงเครดิตคงเหลือ (Real-time)
+  Widget _buildCreditBadge() {
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox();
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        double credit = 0.0;
+        if (snapshot.hasData && snapshot.data!.exists) {
+          credit = (snapshot.data!.get('credit') ?? 0).toDouble();
+        }
+
+        return Container(
+          margin: const EdgeInsets.only(right: 10, top: 6, bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: Colors.black26, // พื้นหลังโปร่งแสงเล็กน้อย
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.account_balance_wallet,
+                color: Colors.yellow,
+                size: 14,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                NumberFormat('#,###.00').format(credit),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _check4DigitConfig() async {
@@ -59,19 +105,16 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     }
   }
 
-  // ✅ ฟังก์ชันสลับการเลือกประเภท (Toggle อิสระตามที่คุณต้องการ)
   void _onCategoryTap(String name) {
     setState(() {
       if (selectedCategories.contains(name)) {
-        // ถ้ามีอยู่แล้วให้เอาออก (ยกเว้นเหลืออันเดียว ไม่ให้เอาออกหมดเพื่อให้ระบบยังรู้ว่าต้องพิมพ์กี่หลัก)
         if (selectedCategories.length > 1) {
           selectedCategories.remove(name);
         }
       } else {
-        // ถ้ายังไม่มีให้เพิ่มเข้าไปใน Set (เลือกพร้อมกันหลายอันได้)
         selectedCategories.add(name);
       }
-      currentNumber = ""; // ล้างตัวเลขที่พิมพ์ค้างไว้เมื่อเปลี่ยนโหมด
+      currentNumber = "";
     });
   }
 
@@ -98,7 +141,6 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
         if (currentNumber.length < max) {
           currentNumber += value;
           if (currentNumber.length == max) {
-            // ✅ เพิ่มเลขเข้าทุกหมวดหมู่ที่ถูกเลือก (Selected) ไว้พร้อมกัน
             for (var cat in selectedCategories) {
               if (isReverseMode && currentNumber.length >= 2) {
                 _processReverseAndAddForCat(cat);
@@ -137,7 +179,6 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     }
   }
 
-  // ✅ ปรับความยาวตามประเภทหวยที่ "ยาวที่สุด" ในกลุ่มที่เลือกไว้
   int _getMaxLength() {
     if (selectedCategories.any((c) => c.contains("สี่"))) return 4;
     if (selectedCategories.any((c) => c.contains("สาม"))) return 3;
@@ -177,9 +218,13 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
           ),
         ),
         backgroundColor: kMainGreen,
-        centerTitle: true,
-        toolbarHeight: 40,
+        centerTitle:
+            false, // ✅ ปรับเป็น false เพื่อให้ Credit Badge มีพื้นที่ด้านขวา
+        toolbarHeight: 45,
         iconTheme: const IconThemeData(color: Colors.white, size: 18),
+        actions: [
+          _buildCreditBadge(), // ✅ เพิ่มยอดเงินที่นี่
+        ],
       ),
       body: Column(
         children: [
@@ -299,7 +344,6 @@ class _NumberInputScreenState extends State<NumberInputScreen> {
     );
   }
 
-  // ✅ ฟังก์ชัน UI อื่นๆ (Sidebar, Keypad, Submit) คงเดิมตามชุดของคุณ
   Widget _buildTopActions() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
