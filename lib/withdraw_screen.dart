@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-// หน้าจอสำหรับถอนเงิน โดยจะดึงข้อมูลบัญชีธนาคารของผู้ใช้มาแสดง และให้กรอกจำนวนเงินที่ต้องการถอน
+//หน้าจอสำหรับถอนเงิน โดยจะดึงข้อมูลบัญชีธนาคารของผู้ใช้มาแสดง และให้กรอกจำนวนเงินที่ต้องการถอน
 class WithdrawScreen extends StatefulWidget {
   const WithdrawScreen({super.key});
 
