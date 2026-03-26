@@ -429,7 +429,7 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
         }
       }
     } catch (e) {
-      debugPrint("🚨 Error ใน _isLottoOpen: $e");
+      //debugPrint("🚨 Error ใน _isLottoOpen: $e");
       return false;
     }
   }
@@ -461,7 +461,8 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
       // 🛑 DEBUG 3: เช็คช่วงเวลา
       bool isOpen = now.isAfter(openToday) && now.isBefore(closeToday);
 
-      debugPrint("🕒 ช่วงเวลาเปิดรับ: $openStr - $closeStr");
+      //debugPrint("🕒 ช่วงเวลาเปิดรับ: $openStr - $closeStr");
+
       if (!isOpen) {
         debugPrint(
           "🚫 [$name] ปิดเพราะอยู่นอกช่วงเวลา (ตอนนี้ ${DateFormat('HH:mm').format(now)})",
@@ -469,11 +470,12 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
       } else {
         debugPrint("✅ [$name] เปิดรับแทงปกติ!");
       }
-      debugPrint("------------------------------------------");
+
+      //debugPrint("------------------------------------------");
 
       return isOpen;
     } catch (e) {
-      debugPrint("🚨 Error ใน _checkTime: $e");
+      //debugPrint("🚨 Error ใน _checkTime: $e");
       return true;
     }
   }
