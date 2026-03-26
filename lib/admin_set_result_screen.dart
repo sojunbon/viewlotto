@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // อย่าลืมเพิ่ม intl ใน pubspec.yaml
+import 'package:intl/intl.dart';
 
-// หน้าจอสำหรับแอดมินในการตั้งผลรางวัลและจ่ายเงินให้ผู้ชนะ
 class AdminSetResultScreen extends StatefulWidget {
   const AdminSetResultScreen({super.key});
 
@@ -13,6 +13,20 @@ class AdminSetResultScreen extends StatefulWidget {
 class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   bool _isProcessing = false;
+
+  // ✅ ฟังก์ชันเช็ค "สามตัวโต๊ด"
+  bool isTodWin(String betNum, String resultNum) {
+    if (betNum.length != 3 || resultNum.length != 3) return false;
+    List<String> betList = betNum.split('')..sort();
+    List<String> resList = resultNum.split('')..sort();
+    return betList.join() == resList.join();
+  }
+
+  // ✅ ฟังก์ชันเช็ค "เลขวิ่ง" (เช็คว่ามีเลขนั้นอยู่ในชุดผลรางวัลหรือไม่)
+  bool isWinVing(String betNum, String resultNum) {
+    if (betNum.isEmpty || resultNum.isEmpty) return false;
+    return resultNum.contains(betNum);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,9 +83,8 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
                       if (resSnapshot.hasData && resSnapshot.data!.exists) {
                         currentRes =
                             resSnapshot.data!.data() as Map<String, dynamic>;
-                        // ✅ ดึงวันที่และเวลาจาก draw_date มาแสดง
-                        if (currentRes['draw_date'] != null) {
-                          DateTime dt = (currentRes['draw_date'] as Timestamp)
+                        if (currentRes?['draw_date'] != null) {
+                          DateTime dt = (currentRes?['draw_date'] as Timestamp)
                               .toDate();
                           updateTimeStr =
                               "อัปเดตเมื่อ: ${DateFormat('dd/MM/yyyy HH:mm').format(dt)} น.";
@@ -99,7 +112,7 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
                             children: [
                               Text(
                                 currentRes != null
-                                    ? "${hasDigit4 ? '${currentRes['res_4top'] ?? '-'} | ' : ''}${currentRes['res_3top']} | ${currentRes['res_2bottom']}"
+                                    ? "${hasDigit4 ? '${currentRes?['res_4top'] ?? '-'} | ' : ''}${currentRes?['res_3top']} | ${currentRes?['res_2bottom']}"
                                     : "ยังไม่มีผล",
                                 style: TextStyle(
                                   color: currentRes != null
@@ -266,11 +279,18 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
     setState(() => _isProcessing = true);
     try {
       await _updateLottoResult(key, name, t4, t3, b2, has4);
+
+      // ดึง 2 ตัวท้ายของ 3 ตัวบน เพื่อตรวจรางวัล "สองตัวบน"
+      String top2Result = t3.trim().length >= 3
+          ? t3.trim().substring(t3.trim().length - 2)
+          : "";
+
       QuerySnapshot pendingBets = await _db
           .collection('bets')
           .where('lotto_key', isEqualTo: key)
           .where('status', isEqualTo: 'pending')
           .get();
+
       final batch = _db.batch();
       Map<String, double> userPayouts = {};
       Map<String, double> billWins = {};
@@ -287,13 +307,22 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
         affectedBills.add(bId);
         bool isWin = false;
 
-        // ✅ แก้ไขอักขระให้ตรง DB: ใช้ "สี่ตัวบน", "สามตัวบน", "สองตัวล่าง"
-        if (cat == "สี่ตัวบน" && has4 && betNumbers == t4.trim())
+        // 🛠️ ตรวจสอบรางวัลทุกหมวดหมู่
+        if (cat == "สี่ตัวบน" && has4 && betNumbers == t4.trim()) {
           isWin = true;
-        else if (cat == "สามตัวบน" && betNumbers == t3.trim())
+        } else if (cat == "สามตัวบน" && betNumbers == t3.trim()) {
           isWin = true;
-        else if (cat == "สองตัวล่าง" && betNumbers == b2.trim())
+        } else if (cat == "สามตัวโต๊ด" && isTodWin(betNumbers, t3.trim())) {
           isWin = true;
+        } else if (cat == "สองตัวบน" && betNumbers == top2Result) {
+          isWin = true;
+        } else if (cat == "สองตัวล่าง" && betNumbers == b2.trim()) {
+          isWin = true;
+        } else if (cat == "วิ่งบน" && isWinVing(betNumbers, t3.trim())) {
+          isWin = true;
+        } else if (cat == "วิ่งล่าง" && isWinVing(betNumbers, b2.trim())) {
+          isWin = true;
+        }
 
         if (isWin) {
           double payout = price * rate;
@@ -304,11 +333,14 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
           batch.update(doc.reference, {'status': 'lose', 'payout': 0.0});
         }
       }
+
+      // จ่ายเครดิต
       userPayouts.forEach(
         (uid, amt) => batch.update(_db.collection('users').doc(uid), {
           'credit': FieldValue.increment(amt),
         }),
       );
+      // Sync บิล
       for (String bId in affectedBills) {
         double winAmt = billWins[bId] ?? 0.0;
         batch.update(_db.collection('bills').doc(bId), {
@@ -316,6 +348,18 @@ class _AdminSetResultScreenState extends State<AdminSetResultScreen> {
           'total_win': winAmt,
         });
       }
+
+      // 📝 บันทึก Log การจ่ายเงิน
+      String logId = "LOG-${DateTime.now().millisecondsSinceEpoch}";
+      batch.set(_db.collection('payout_logs').doc(logId), {
+        'logId': logId,
+        'lotto_name': name,
+        'result': "บน:$t3 ล่าง:$b2",
+        'total_payout': userPayouts.values.fold(0.0, (a, b) => a + b),
+        'timestamp': FieldValue.serverTimestamp(),
+        'admin_id': FirebaseAuth.instance.currentUser?.uid,
+      });
+
       await batch.commit();
       if (mounted)
         ScaffoldMessenger.of(

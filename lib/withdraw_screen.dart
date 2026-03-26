@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// ✅ หน้าจอสำหรับถอนเงิน โดยดึงข้อมูลบัญชีธนาคารและชื่อจากโปรไฟล์ผู้ใช้มาแสดง และไม่ให้แก้ไข
 class WithdrawScreen extends StatefulWidget {
   const WithdrawScreen({super.key});
 
