@@ -370,7 +370,7 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
 
       // 🛑 DEBUG 1: เช็ค Master Switch
       if (data['lottostatus'] == false) {
-        debugPrint("❌ [$lottoName] ปิดเพราะ lottostatus = false");
+        // debugPrint("❌ [$lottoName] ปิดเพราะ lottostatus = false");
         return false;
       }
 
@@ -406,6 +406,7 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
               .toList();
         }
 
+        /*
         // 🛑 DEBUG 2: เช็คข้อมูลวัน
         debugPrint("------------------------------------------");
         debugPrint("🔍 ตรวจสอบหวย: $lottoName");
@@ -413,13 +414,17 @@ class _BetTypeScreenState extends State<BetTypeScreen> {
           "⏰ เวลาเครื่องตอนนี้: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(now)} (วันในสัปดาห์: ${now.weekday})",
         );
         debugPrint("📅 PlayDays จาก DB: $playDays");
+        */
 
         if (playDays.contains(now.weekday)) {
           return _checkTime(data, now, lottoName);
         } else {
+          /*
           debugPrint(
             "🚫 [$lottoName] ปิดเพราะวันนี้ (${now.weekday}) ไม่อยู่ใน PlayDays $playDays",
           );
+          */
+
           return false;
         }
       }
