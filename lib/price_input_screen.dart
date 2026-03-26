@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+// หน้าจอสำหรับระบุราคาที่ต้องการแทง (หลังจากเลือกเลขและประเภทในหน้า Draft) โดยมีการคำนวณอัตราจ่ายแบบขั้นบันได และแสดงยอดเงินคงเหลือแบบ Real-time
 const Color kMainGreen = Color(0xFF11998E);
 
 class PriceInputScreen extends StatefulWidget {
