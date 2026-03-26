@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-// หน้าจอสำหรับระบุราคาที่ต้องการแทง (หลังจากเลือกเลขและประเภทในหน้า Draft) โดยมีการคำนวณอัตราจ่ายแบบขั้นบันได และแสดงยอดเงินคงเหลือแบบ Real-time
+// หน้าจอสำหรับระบุราคาที่ต้องการแทง มีการคำนวณเรทจ่ายขั้นบันไดและแสดงยอดเงิน Real-time
 const Color kMainGreen = Color(0xFF11998E);
 
 class PriceInputScreen extends StatefulWidget {
@@ -27,6 +27,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   double _userDiscountPercent = 0.0;
   int _activeFieldIndex = 0;
   bool _showKeypad = true;
+  bool _isLoading = true; // ✅ เพิ่มตัวแปรสถานะการโหลด
 
   @override
   void initState() {
@@ -88,6 +89,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   }
 
   Future<void> _loadInitialData() async {
+    setState(() => _isLoading = true); // ✅ เริ่มแสดงตัวโหลด
     try {
       final payrateDoc = await _db.collection('configs').doc('payrate').get();
       if (payrateDoc.exists) {
@@ -97,23 +99,25 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           _payPercent = (payrateDoc.data()?['pay_percent'] ?? 10).toInt();
         });
       }
-    } catch (e) {
-      debugPrint("🚨 Config Error: $e");
-    }
 
-    final User? user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final userDoc = await _db.collection('users').doc(user.uid).get();
-      if (userDoc.exists) {
-        double discount = (userDoc.data()?['custdiscount'] ?? 0.0).toDouble();
-        Timestamp? expire = userDoc.data()?['expire_discount'];
-        if (expire != null && expire.toDate().isAfter(DateTime.now())) {
-          setState(() => _userDiscountPercent = discount);
+      final User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final userDoc = await _db.collection('users').doc(user.uid).get();
+        if (userDoc.exists) {
+          double discount = (userDoc.data()?['custdiscount'] ?? 0.0).toDouble();
+          Timestamp? expire = userDoc.data()?['expire_discount'];
+          if (expire != null && expire.toDate().isAfter(DateTime.now())) {
+            setState(() => _userDiscountPercent = discount);
+          }
         }
+        await _fetchTotalPayoutRisk();
       }
-      await _fetchTotalPayoutRisk();
+      await _loadBaseRates();
+    } catch (e) {
+      debugPrint("🚨 Error: $e");
+    } finally {
+      setState(() => _isLoading = false); // ✅ ปิดตัวโหลดเมื่อเสร็จสิ้น
     }
-    _loadBaseRates();
   }
 
   Future<void> _fetchTotalPayoutRisk() async {
@@ -200,7 +204,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     String mapKey = "${bet['num']}_${bet['cat']}_${bet['lottoKey']}";
     double accumulatedRisk = _accumulatedPayoutMap[mapKey] ?? 0;
 
-    // 🛠️ NEW LOGIC: ขั้นบันได (Range Step)
     int steps = 0;
     if (accumulatedRisk >= _countPerNum) {
       steps = 1;
@@ -211,7 +214,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     }
 
     int finalRate = (base * (1 - (steps * _payPercent / 100))).round();
-
     if (finalRate <= 0)
       return {
         "rate": 0,
@@ -320,24 +322,38 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           style: TextStyle(color: Colors.white, fontSize: 18),
         ),
         backgroundColor: kMainGreen,
-        centerTitle: false, // ✅ เว้นที่ให้ Badge ยอดเงิน
+        centerTitle: false,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: [_buildCreditBadge()], // ✅ แสดงยอดเงิน Real-time
+        actions: [_buildCreditBadge()],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(12),
-              children: groupedIndices.entries
-                  .map((e) => _buildCategoryCard(e.key, e.value))
-                  .toList(),
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: kMainGreen),
+                  SizedBox(height: 15),
+                  Text(
+                    "กำลังตรวจสอบข้อมูลเรทจ่าย...",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            )
+          : Column(
+              children: [
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(12),
+                    children: groupedIndices.entries
+                        .map((e) => _buildCategoryCard(e.key, e.value))
+                        .toList(),
+                  ),
+                ),
+                _showKeypad ? _buildSymmetricKeypad() : _buildSummaryFooter(),
+              ],
             ),
-          ),
-          _showKeypad ? _buildSymmetricKeypad() : _buildSummaryFooter(),
-        ],
-      ),
     );
   }
 
