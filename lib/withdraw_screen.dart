@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-// ✅ หน้าจอสำหรับถอนเงิน โดยดึงข้อมูลบัญชีธนาคารและชื่อจากโปรไฟล์ผู้ใช้มาแสดง และไม่ให้แก้ไข
+// หน้าจอสำหรับถอนเงิน โดยจะดึงข้อมูลบัญชีธนาคารของผู้ใช้มาแสดง (Disabled) และให้กรอกจำนวนเงินที่ต้องการถอน
 class WithdrawScreen extends StatefulWidget {
   const WithdrawScreen({super.key});
 
@@ -25,7 +25,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
     _loadUserBankData();
   }
 
-  // ✅ โหลดข้อมูลธนาคารและชื่อจากโปรไฟล์ผู้ใช้
+  // ✅ โหลดข้อมูลธนาคารและชื่อจากโปรไฟล์ผู้ใช้มาใส่ใน Controller และตัวแปร
   Future<void> _loadUserBankData() async {
     if (_user == null) return;
     final doc = await FirebaseFirestore.instance
@@ -36,7 +36,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
       setState(() {
         _fullNameController.text = doc.data()?['fullName'] ?? "";
         _bankAccountController.text = doc.data()?['bankAccount'] ?? "";
-        // ✅ ดึงชื่อธนาคารมาเก็บในตัวแปรเพื่อแสดงใน Dropdown
+        // ✅ ดึงชื่อธนาคารมาเก็บเพื่อแสดงในหน้าจอ
         _selectedBank = doc.data()?['bankName'];
       });
     }
@@ -55,6 +55,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
       return;
     }
 
+    // เช็คว่า User ตั้งค่าบัญชีหรือยัง
     if (_bankAccountController.text.isEmpty || _selectedBank == null) {
       _showMsg("กรุณาตั้งค่าบัญชีธนาคารที่หน้าโปรไฟล์ก่อนทำรายการ");
       return;
@@ -64,26 +65,28 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
 
     try {
       final batch = FirebaseFirestore.instance.batch();
-      final String docId = DateTime.now().millisecondsSinceEpoch.toString();
 
-      batch.update(
-        FirebaseFirestore.instance.collection('users').doc(_user!.uid),
-        {'credit': FieldValue.increment(-amount)},
-      );
+      // ✅ 🛠️ แก้ไข: ใช้ Auto-Generated ID จาก Firestore แทน millisecondsSinceEpoch เพื่อความปลอดภัย
+      final withdrawRef = FirebaseFirestore.instance
+          .collection('transactions')
+          .doc();
+      final userRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(_user!.uid);
 
-      batch.set(
-        FirebaseFirestore.instance.collection('transactions').doc(docId),
-        {
-          'uid': _user!.uid,
-          'displayName': _fullNameController.text,
-          'amount': amount,
-          'type': 'withdraw',
-          'status': 'pending',
-          'bankName': _selectedBank,
-          'bankAccount': _bankAccountController.text.trim(),
-          'timestamp': FieldValue.serverTimestamp(),
-        },
-      );
+      batch.update(userRef, {'credit': FieldValue.increment(-amount)});
+
+      batch.set(withdrawRef, {
+        'transactionId': withdrawRef.id, // เก็บ ID ที่ระบบเจนให้ไว้ใน doc ด้วย
+        'uid': _user!.uid,
+        'displayName': _fullNameController.text,
+        'amount': amount,
+        'type': 'withdraw',
+        'status': 'pending',
+        'bankName': _selectedBank,
+        'bankAccount': _bankAccountController.text.trim(),
+        'timestamp': FieldValue.serverTimestamp(),
+      });
 
       await batch.commit();
 
@@ -151,7 +154,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                 ),
                 const SizedBox(height: 15),
 
-                // ✅ Dropdown ธนาคาร (Disabled แต่ดึงค่ามาแสดง)
+                // ✅ Dropdown ธนาคาร (Disabled แต่ดึงค่ามาแสดงจากโปรไฟล์)
                 _buildBankDropdown(enabled: false),
                 const SizedBox(height: 15),
 
@@ -238,7 +241,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
     );
   }
 
-  // ✅ ปรับจูน Dropdown ให้แสดงชื่อธนาคารจาก DB และปิดการแก้ไข
+  // ✅ Dropdown แสดงชื่อธนาคารจากโปรไฟล์ (Lock ไม่ให้เลือกใหม่)
   Widget _buildBankDropdown({bool enabled = true}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -251,7 +254,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
         child: DropdownButton<String>(
           isExpanded: true,
           hint: const Text("เลือกธนาคาร"),
-          value: _selectedBank, // ✅ ค่านี้ดึงมาจาก _loadUserBankData()
+          value: _selectedBank,
           items: _selectedBank == null
               ? []
               : [
@@ -265,7 +268,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                     ),
                   ),
                 ],
-          onChanged: null, // ✅ สั่งเป็น null เพื่อไม่ให้คลิกเลือกใหม่ได้
+          onChanged: null, // ✅ ล็อค Dropdown ให้อ่านอย่างเดียว
         ),
       ),
     );
