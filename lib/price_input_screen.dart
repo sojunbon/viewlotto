@@ -23,7 +23,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
   int _countPerNum = 95000;
   int _maxOver = 5000;
   int _payPercent = 10;
-  double _userDiscountPercent = 0.0;
+  double _userDiscountPercent = 0.0; // ✅ ตัวแปรส่วนลดที่ต้องรักษาไว้
   int _activeFieldIndex = 0;
   bool _showKeypad = true;
   bool _isLoading = true;
@@ -39,6 +39,8 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     priceControllers.clear();
     for (int i = 0; i < widget.draftBets.length; i++) {
       priceControllers[i] = TextEditingController(text: "");
+      // เพิ่ม Listener เพื่อให้เวลาพิมพ์เลขแล้วยอดรวม/ส่วนลดอัปเดตทันที
+      priceControllers[i]!.addListener(() => setState(() {}));
     }
   }
 
@@ -46,14 +48,15 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     setState(() => _isLoading = true);
     final User? user = FirebaseAuth.instance.currentUser;
     try {
+      // 🚀 รันพร้อมกันเพื่อความเร็ว
       await Future.wait([
         _fetchPayrateConfig(),
-        if (user != null) _fetchUserData(user.uid),
+        if (user != null) _fetchUserData(user.uid), // ✅ ดึงส่วนลดตรงนี้
         if (user != null) _fetchTotalPayoutRisk(),
         _loadBaseRates(),
       ]);
     } catch (e) {
-      debugPrint("🚨 Load Data Error: $e");
+      debugPrint("🚨 Load Error: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -73,8 +76,11 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     if (userDoc.exists) {
       double discount = (userDoc.data()?['custdiscount'] ?? 0.0).toDouble();
       Timestamp? expire = userDoc.data()?['expire_discount'];
+      // ✅ เช็กวันหมดอายุส่วนลด
       if (expire != null && expire.toDate().isAfter(DateTime.now())) {
-        _userDiscountPercent = discount;
+        setState(
+          () => _userDiscountPercent = discount,
+        ); // ต้องมี setState ตรงนี้!
       }
     }
   }
@@ -89,7 +95,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           .where('lotto_key', isEqualTo: bet['lottoKey'])
           .where('status', isEqualTo: 'pending')
           .get();
-
       double totalRisk = 0;
       for (var doc in snap.docs) {
         totalRisk += (doc.data()['total_pay'] ?? 0).toDouble();
@@ -111,7 +116,6 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           .collection('lottogrid')
           .where('lottotype', isEqualTo: key)
           .get();
-
       if (lottoSnap.docs.isNotEmpty) {
         var lData = lottoSnap.docs.first.data();
         _allBasePayRates[key] = {
@@ -133,6 +137,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     await Future.wait(tasks);
   }
 
+  // ✅ แสดงเครดิต Real-time
   Widget _buildCreditBadge() {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return const SizedBox();
@@ -227,29 +232,16 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     };
   }
 
-  // ✅ ปรับปรุงส่วนการส่งข้อมูล (Document ID & Navigation)
   Future<void> _submitBetsToFirebase() async {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    for (int i = 0; i < widget.draftBets.length; i++) {
-      var r = _getRateInfo(i);
-      if (r['isOverLimit']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: Colors.red,
-            content: Text(
-              "เลข ${widget.draftBets[i]['num']} แทงเกินยอดสูงสุด (${r['maxAmt']} บ.)",
-            ),
-          ),
-        );
-        return;
-      }
-    }
     double total = 0;
     priceControllers.values.forEach(
       (c) => total += double.tryParse(c.text) ?? 0,
     );
     if (total <= 0) return;
+
+    // ✅ หักส่วนลดก่อนส่งไป Firebase
     double disc = (total * _userDiscountPercent) / 100;
     double netPay = total - disc;
 
@@ -265,17 +257,15 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
         return;
       }
 
-      // ✅ 1. ให้ Firebase รัน Auto-ID ให้สำหรับ Bills เพื่อป้องกัน ID ซ้ำ
       DocumentReference billRef = _db.collection('bills').doc();
       String billId = billRef.id;
 
       batch.update(userRef, {'credit': FieldValue.increment(-netPay)});
-
-      // ✅ 2. บันทึก Bill โดยใช้ ID จาก Firebase
       batch.set(billRef, {
         'billId': billId,
         'uid': user.uid,
         'net_pay': netPay,
+        'discount_amount': disc, // เก็บยอดที่ลดไป
         'status': 'pending',
         'timestamp': FieldValue.serverTimestamp(),
       });
@@ -297,15 +287,10 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
           'timestamp': FieldValue.serverTimestamp(),
         });
       }
-
       await batch.commit();
-
-      // ✅ 3. ปิดทั้งหน้า PriceInput และ NumberInput พร้อมกัน
       if (mounted) {
         int count = 0;
-        Navigator.popUntil(context, (route) {
-          return count++ == 2;
-        });
+        Navigator.popUntil(context, (route) => count++ == 2);
       }
     } catch (e) {
       debugPrint("🚨 Submit Error: $e");
@@ -368,14 +353,15 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
       (idx) =>
           categoryTotal += double.tryParse(priceControllers[idx]!.text) ?? 0,
     );
+    // ✅ คำนวณส่วนลดแสดงใน Card
     double discountAmount = (categoryTotal * _userDiscountPercent) / 100;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 20),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
         side: const BorderSide(color: kMainGreen, width: 1.5),
       ),
-      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           Padding(
@@ -667,7 +653,10 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
     priceControllers.values.forEach(
       (c) => total += double.tryParse(c.text) ?? 0,
     );
+    // ✅ นำส่วนลดมาใช้คำนวณยอดสุทธิ
     double disc = (total * _userDiscountPercent) / 100;
+    double netTotal = total - disc;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
@@ -682,7 +671,7 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
             children: [
               const Text("ยอดสุทธิที่ต้องจ่าย:"),
               Text(
-                "${(total - disc).toStringAsFixed(2)} บาท",
+                "${netTotal.toStringAsFixed(2)} บาท",
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -691,6 +680,14 @@ class _PriceInputScreenState extends State<PriceInputScreen> {
               ),
             ],
           ),
+          if (_userDiscountPercent > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                "(ประหยัดไป ${disc.toStringAsFixed(2)} บาท)",
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ),
           const SizedBox(height: 15),
           ElevatedButton(
             onPressed: _submitBetsToFirebase,
