@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 const Color kMainGreen = Color(0xFF11998E);
 
+/// หน้าจอสำหรับระบุราคาแต่ละเลขที่จะแทง ก่อนกดส่งโพยไปยัง Firebase
 class PriceInputScreen extends StatefulWidget {
   final List<Map<String, String>> draftBets;
   const PriceInputScreen({super.key, required this.draftBets});
