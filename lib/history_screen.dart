@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+// หน้าจอสำหรับแสดงประวัติการแทงหวยของผู้ใช้ โดยดึงข้อมูลจาก Firestore แบบ Real-time และสามารถดูรายละเอียดโพยได้
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
