@@ -510,7 +510,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   ),
                                 ),
                                 Text(
-                                  "฿${payout.toStringAsFixed(0)}",
+                                  "฿ ${NumberFormat('#,###.00').format((payout ?? 0.0).toDouble())}", //"฿${payout.toStringAsFixed(0)}",
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
