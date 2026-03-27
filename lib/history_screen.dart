@@ -298,7 +298,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             ),
                           ),
                           Text(
-                            "฿ ${(data['net_pay'] ?? 0.0).toDouble().toStringAsFixed(2)}",
+                            //  "฿ ${(data['net_pay'] ?? 0.0).toDouble().toStringAsFixed(2)}",
+                            "฿ ${NumberFormat('#,###.00').format((data['net_pay'] ?? 0.0).toDouble())}",
                             style: TextStyle(
                               color: statusColor,
                               fontWeight: FontWeight.bold,
@@ -338,7 +339,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   const Text("ผลแพ้ชนะ: ", style: TextStyle(fontSize: 14)),
                   Text(
                     isWin
-                        ? "฿ ${(data['total_win'] ?? 0.0).toDouble().toStringAsFixed(2)}"
+                        ? "฿ ${NumberFormat('#,###.00').format((data['total_win'] ?? 0.0).toDouble())}" //"฿ ${(data['total_win'] ?? 0.0).toDouble().toStringAsFixed(2)}"
                         : "฿ 0",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
@@ -418,7 +419,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
                     ),
                     Text(
-                      "฿${(billData['total_win'] ?? 0.0).toDouble().toStringAsFixed(2)}",
+                      "฿ ${NumberFormat('#,###.00').format((billData['total_win'] ?? 0.0).toDouble())}",
+                      //"฿${(billData['total_win'] ?? 0.0).toDouble().toStringAsFixed(2)}",
                       style: const TextStyle(
                         fontSize: 40,
                         fontWeight: FontWeight.bold,
@@ -487,7 +489,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     ),
                                   ),
                                   Text(
-                                    "฿${(bet['price_bet'] ?? 0.0).toDouble().toStringAsFixed(0)} x ${(bet['rate_pay'] ?? 0.0).toDouble().toStringAsFixed(0)}",
+                                    "฿${(bet['price_bet'] ?? 0.0).toDouble().toStringAsFixed(0)} x ${NumberFormat('#,###.00').format((bet['rate_pay'] ?? 0.0).toDouble())}",
+                                    // "฿${(bet['price_bet'] ?? 0.0).toDouble().toStringAsFixed(0)} x ${(bet['rate_pay'] ?? 0.0).toDouble().toStringAsFixed(0)}",
                                     style: const TextStyle(
                                       color: Colors.grey,
                                       fontSize: 13,
